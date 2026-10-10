@@ -1,0 +1,54 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Next.js development server",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Install project dependencies",
+			"type": "shell",
+			"command": "C:\\Users\\lenovo\\AppData\\Local\\nvm\\v26.9.0\\npm.cmd",
+			"args": [
+				"ci"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Install dependencies with Node 26",
+			"type": "shell",
+			"command": "C:\\Windows\\System32\\cmd.exe",
+			"args": [
+				"/d",
+				"/s",
+				"/c",
+				"set \"PATH=C:\\Users\\lenovo\\AppData\\Local\\nvm\\v26.9.0;%PATH%\" & C:\\Users\\lenovo\\AppData\\Local\\nvm\\v26.9.0\\npm.cmd ci"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Start Next.js dev server with Node 26",
+			"type": "shell",
+			"command": "C:\\Windows\\System32\\cmd.exe",
+			"args": [
+				"/d",
+				"/s",
+				"/c",
+				"set \"PATH=C:\\Users\\lenovo\\AppData\\Local\\nvm\\v26.9.0;%PATH%\" & C:\\Users\\lenovo\\AppData\\Local\\nvm\\v26.9.0\\npm.cmd run dev"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

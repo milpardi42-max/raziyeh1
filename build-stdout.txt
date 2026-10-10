@@ -1,0 +1,364 @@
+   ▲ Next.js 15.5.27
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 109s
+   Linting and checking validity of types ...
+
+./src/components/academy/WebinarBroadcast.tsx
+107:10  Warning: 'turnConfigured' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/AdminApp.tsx
+64:14  Warning: 'href' is defined but never used.  @typescript-eslint/no-unused-vars
+93:7  Warning: 'SECTION_LABELS' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+158:46  Warning: Image elements must have an alt prop, either with meaningful text, or an empty string for decorative images.  jsx-a11y/alt-text
+1194:10  Warning: 'FlagList' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/ArtistsSignupManager.tsx
+624:5  Warning: Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps').
+
+./src/components/admin/BuyersManager.tsx
+487:5  Warning: Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps').
+644:3  Warning: 'accentLight' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/FinancialManager.tsx
+5:8  Warning: 'Link' is defined but never used.  @typescript-eslint/no-unused-vars
+10:3  Warning: 'Coins' is defined but never used.  @typescript-eslint/no-unused-vars
+11:3  Warning: 'CreditCard' is defined but never used.  @typescript-eslint/no-unused-vars
+14:3  Warning: 'Edit2' is defined but never used.  @typescript-eslint/no-unused-vars
+15:3  Warning: 'FileSpreadsheet' is defined but never used.  @typescript-eslint/no-unused-vars
+16:3  Warning: 'Filter' is defined but never used.  @typescript-eslint/no-unused-vars
+17:3  Warning: 'Layers' is defined but never used.  @typescript-eslint/no-unused-vars
+19:3  Warning: 'Lock' is defined but never used.  @typescript-eslint/no-unused-vars
+21:3  Warning: 'Palette' is defined but never used.  @typescript-eslint/no-unused-vars
+23:3  Warning: 'Plus' is defined but never used.  @typescript-eslint/no-unused-vars
+24:3  Warning: 'RefreshCw' is defined but never used.  @typescript-eslint/no-unused-vars
+25:3  Warning: 'RotateCcw' is defined but never used.  @typescript-eslint/no-unused-vars
+28:3  Warning: 'ShieldCheck' is defined but never used.  @typescript-eslint/no-unused-vars
+31:3  Warning: 'Store' is defined but never used.  @typescript-eslint/no-unused-vars
+32:3  Warning: 'Tag' is defined but never used.  @typescript-eslint/no-unused-vars
+33:3  Warning: 'TrendingUp' is defined but never used.  @typescript-eslint/no-unused-vars
+36:3  Warning: 'X' is defined but never used.  @typescript-eslint/no-unused-vars
+39:10  Warning: 'Button' is defined but never used.  @typescript-eslint/no-unused-vars
+40:17  Warning: 'formatNumber' is defined but never used.  @typescript-eslint/no-unused-vars
+41:15  Warning: 'Artist' is defined but never used.  @typescript-eslint/no-unused-vars
+41:40  Warning: 'Pattern' is defined but never used.  @typescript-eslint/no-unused-vars
+41:49  Warning: 'Product' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/HomeSectionsManager.tsx
+74:55  Warning: Image elements must have an alt prop, either with meaningful text, or an empty string for decorative images.  jsx-a11y/alt-text
+550:15  Warning: Image elements must have an alt prop, either with meaningful text, or an empty string for decorative images.  jsx-a11y/alt-text
+586:17  Warning: Image elements must have an alt prop, either with meaningful text, or an empty string for decorative images.  jsx-a11y/alt-text
+892:54  Warning: 'onToggleFlag' is defined but never used.  @typescript-eslint/no-unused-vars
+892:68  Warning: 'flagLabel' is defined but never used.  @typescript-eslint/no-unused-vars
+892:79  Warning: 'flagActive' is defined but never used.  @typescript-eslint/no-unused-vars
+897:9  Warning: 'hasDiscount' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+901:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1035:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1147:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1155:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1253:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1333:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1411:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1471:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1515:37  Warning: 'data' is defined but never used.  @typescript-eslint/no-unused-vars
+1573:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/admin/LiveDashboard.tsx
+288:45  Warning: 'total' is defined but never used.  @typescript-eslint/no-unused-vars
+344:5  Warning: Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps').
+
+./src/components/admin/PortfolioHeroManager.tsx
+6:3  Warning: 'EyeOff' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/ProductsManager.tsx
+898:49  Warning: 'idx' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/admin/UsersManager.tsx
+483:7  Warning: Expected an assignment or function call and instead saw an expression.  @typescript-eslint/no-unused-expressions
+
+./src/components/admin/WebinarAttendeesPanel.tsx
+19:3  Warning: 'User' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/artist/ArtistDashboard.tsx
+508:45  Warning: 'i' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/artist/ArtistDashboardView.tsx
+74:9  Warning: 'pending' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/home/Hero.tsx
+102:3  Warning: Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps').
+
+./src/components/home/sections.tsx
+81:46  Warning: 'categories' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/layout/AnnouncementBar.tsx
+4:20  Warning: 'CalendarClock' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/product/Gallery.tsx
+24:9  Warning: The 'list' conditional could make the dependencies of useEffect Hook (at line 34) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/lib/data/seed/artists.ts
+255:7  Warning: 'spec' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/206) ...
+   Generating static pages (51/206) 
+   Generating static pages (102/206) 
+   Generating static pages (154/206) 
+ ✓ Generating static pages (206/206)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                           Size  First Load JS  Revalidate  Expire
+┌ ○ /                                                296 B         103 kB
+├ ○ /_not-found                                       1 kB         103 kB
+├ ● /[locale]                                      15.5 kB         153 kB
+├   ├ /fa
+├   └ /en
+├ ● /[locale]/about                                1.19 kB         121 kB
+├   ├ /fa/about
+├   └ /en/about
+├ ● /[locale]/academy                              13.8 kB         146 kB
+├   ├ /fa/academy
+├   └ /en/academy
+├ ● /[locale]/academy/[slug]                       4.84 kB         147 kB
+├   ├ /fa/academy/pattern-design-foundations
+├   ├ /fa/academy/colour-for-interiors
+├   ├ /fa/academy/geometry-and-rhythm
+├   └ [+9 more paths]
+├ ƒ /[locale]/academy/[slug]/broadcast             10.4 kB         125 kB
+├ ƒ /[locale]/academy/[slug]/live                  11.3 kB         131 kB
+├ ● /[locale]/account                              7.57 kB         153 kB
+├   ├ /fa/account
+├   └ /en/account
+├ ● /[locale]/account/licenses                      4.5 kB         119 kB
+├   ├ /fa/account/licenses
+├   └ /en/account/licenses
+├ ● /[locale]/artist                                 197 B         145 kB
+├   ├ /fa/artist
+├   └ /en/artist
+├ ● /[locale]/artist/marketplace                   19.8 kB         148 kB
+├   ├ /fa/artist/marketplace
+├   └ /en/artist/marketplace
+├ ● /[locale]/artist/portfolio                     18.4 kB         146 kB
+├   ├ /fa/artist/portfolio
+├   └ /en/artist/portfolio
+├ ● /[locale]/artists                                 7 kB         135 kB
+├   ├ /fa/artists
+├   └ /en/artists
+├ ● /[locale]/artists/[slug]                       10.6 kB         148 kB
+├   ├ /fa/artists/razieh-khairipour
+├   ├ /fa/artists/niloufar-rad
+├   ├ /fa/artists/arman-kian
+├   └ [+7 more paths]
+├ ƒ /[locale]/artists/[slug]/inquiry               3.72 kB         126 kB
+├ ƒ /[locale]/artists/[slug]/portfolio             2.76 kB         131 kB
+├ ƒ /[locale]/artists/[slug]/portfolio/[workSlug]  2.76 kB         131 kB
+├ ● /[locale]/checkout                             5.53 kB         133 kB
+├   ├ /fa/checkout
+├   └ /en/checkout
+├ ● /[locale]/checkout/return                      4.84 kB         128 kB
+├   ├ /fa/checkout/return
+├   └ /en/checkout/return
+├ ● /[locale]/checkout/sandbox                     3.49 kB         109 kB
+├   ├ /fa/checkout/sandbox
+├   └ /en/checkout/sandbox
+├ ● /[locale]/collections                          2.13 kB         122 kB
+├   ├ /fa/collections
+├   └ /en/collections
+├ ● /[locale]/collections/[slug]                     216 B         141 kB
+├   ├ /fa/collections/atelier-exclusive
+├   ├ /fa/collections/quiet-interiors
+├   ├ /fa/collections/evening-spaces
+├   └ [+3 more paths]
+├ ● /[locale]/contact                                201 B         132 kB
+├   ├ /fa/contact
+├   └ /en/contact
+├ ● /[locale]/creators/join                        5.52 kB         141 kB
+├   ├ /fa/creators/join
+├   └ /en/creators/join
+├ ● /[locale]/custom                                 652 B         132 kB
+├   ├ /fa/custom
+├   └ /en/custom
+├ ƒ /[locale]/delivery/[token]                       827 B         107 kB
+├ ● /[locale]/faq                                    838 B         112 kB
+├   ├ /fa/faq
+├   └ /en/faq
+├ ● /[locale]/favorites                            3.34 kB         141 kB
+├   ├ /fa/favorites
+├   └ /en/favorites
+├ ● /[locale]/legal/[doc]                            838 B         112 kB
+├   ├ /fa/legal/privacy
+├   ├ /fa/legal/terms
+├   ├ /fa/legal/licenses
+├   └ [+3 more paths]
+├ ● /[locale]/login                                1.49 kB         141 kB
+├   ├ /fa/login
+├   └ /en/login
+├ ● /[locale]/marketplace                           7.6 kB         128 kB
+├   ├ /fa/marketplace
+├   └ /en/marketplace
+├ ƒ /[locale]/marketplace/[slug]                   9.51 kB         130 kB
+├ ● /[locale]/marketplace/cart                     8.98 kB         137 kB
+├   ├ /fa/marketplace/cart
+├   └ /en/marketplace/cart
+├ ● /[locale]/marketplace/subscriptions            3.95 kB         127 kB
+├   ├ /fa/marketplace/subscriptions
+├   └ /en/marketplace/subscriptions
+├ ● /[locale]/owner                                  827 B         107 kB
+├   ├ /fa/owner
+├   └ /en/owner
+├ ● /[locale]/owner/academy                        1.98 kB         159 kB
+├   ├ /fa/owner/academy
+├   └ /en/owner/academy
+├ ● /[locale]/owner/portfolio                      1.98 kB         159 kB
+├   ├ /fa/owner/portfolio
+├   └ /en/owner/portfolio
+├ ● /[locale]/patterns                               222 B         145 kB
+├   ├ /fa/patterns
+├   └ /en/patterns
+├ ● /[locale]/patterns/[slug]                      5.27 kB         143 kB
+├   ├ /fa/patterns/quiet-garden
+├   ├ /fa/patterns/arc-lattice
+├   ├ /fa/patterns/dusty-bloom
+├   └ [+13 more paths]
+├ ● /[locale]/portfolio                            5.27 kB         133 kB
+├   ├ /fa/portfolio
+├   └ /en/portfolio
+├ ● /[locale]/portfolio/[slug]                      6.1 kB         144 kB
+├   ├ /fa/portfolio/penthouse-elaheye
+├   ├ /fa/portfolio/hotel-narenjestan
+├   ├ /fa/portfolio/villa-lavasan
+├   └ [+11 more paths]
+├ ● /[locale]/projects                               652 B         132 kB
+├   ├ /fa/projects
+├   └ /en/projects
+├ ● /[locale]/razieh                               10.6 kB         122 kB
+├   ├ /fa/razieh
+├   └ /en/razieh
+├ ● /[locale]/returns                                838 B         112 kB
+├   ├ /fa/returns
+├   └ /en/returns
+├ ● /[locale]/search                               2.39 kB         144 kB
+├   ├ /fa/search
+├   └ /en/search
+├ ● /[locale]/shop                                 2.56 kB         148 kB
+├   ├ /fa/shop
+├   └ /en/shop
+├ ● /[locale]/shop/[slug]                          3.61 kB         141 kB
+├   ├ /fa/shop/wallpaper-quiet-garden
+├   ├ /fa/shop/wallpaper-copper-damask
+├   ├ /fa/shop/fabric-dusty-bloom
+├   └ [+17 more paths]
+├ ● /[locale]/signup                               1.19 kB         141 kB
+├   ├ /fa/signup
+├   └ /en/signup
+├ ● /[locale]/spaces                               2.13 kB         122 kB
+├   ├ /fa/spaces
+├   └ /en/spaces
+├ ● /[locale]/spaces/[slug]                          206 B         141 kB
+├   ├ /fa/spaces/living-room
+├   ├ /fa/spaces/bedroom
+├   ├ /fa/spaces/kids-room
+├   └ [+9 more paths]
+├ ● /[locale]/stories                              1.19 kB         121 kB
+├   ├ /fa/stories
+├   └ /en/stories
+├ ● /[locale]/stories/[slug]                        1.7 kB         139 kB
+├   ├ /fa/stories/niloufar-rad-morning-light
+├   ├ /fa/stories/hossein-tabrizi-forty-years
+├   ├ /fa/stories/sara-mehr-small-stories
+├   └ [+3 more paths]
+├ ● /[locale]/styles                               2.13 kB         122 kB
+├   ├ /fa/styles
+├   └ /en/styles
+├ ● /[locale]/styles/[slug]                          216 B         141 kB
+├   ├ /fa/styles/minimal
+├   ├ /fa/styles/botanical
+├   ├ /fa/styles/geometric
+├   └ [+17 more paths]
+├ ● /[locale]/verify                               3.71 kB         126 kB
+├   ├ /fa/verify
+├   └ /en/verify
+├ ƒ /[locale]/verify/[serial]                        823 B         107 kB
+├ ƒ /admin/[locale]                                84.8 kB         247 kB
+├ ƒ /admin/[locale]/login                          3.31 kB         113 kB
+├ ƒ /admin/[locale]/marketplace                    10.6 kB         139 kB
+├ ƒ /api/academy/enroll                              296 B         103 kB
+├ ƒ /api/academy/videos/[id]                         296 B         103 kB
+├ ƒ /api/admin/academy/upload-video                  296 B         103 kB
+├ ƒ /api/admin/academy/upload-video/complete         296 B         103 kB
+├ ƒ /api/admin/academy/upload-video/session          296 B         103 kB
+├ ƒ /api/admin/artists                               296 B         103 kB
+├ ƒ /api/admin/chats                                 296 B         103 kB
+├ ƒ /api/admin/content                               296 B         103 kB
+├ ƒ /api/admin/push                                  296 B         103 kB
+├ ƒ /api/admin/push/test                             296 B         103 kB
+├ ƒ /api/admin/reservations                          296 B         103 kB
+├ ƒ /api/admin/session                               296 B         103 kB
+├ ƒ /api/admin/stats                                 296 B         103 kB
+├ ƒ /api/admin/users                                 296 B         103 kB
+├ ƒ /api/artist/drafts                               296 B         103 kB
+├ ƒ /api/artist/inquiry                              296 B         103 kB
+├ ƒ /api/artist/patterns                             296 B         103 kB
+├ ƒ /api/artist/profile                              296 B         103 kB
+├ ƒ /api/artist/services                             296 B         103 kB
+├ ƒ /api/artist/subscription                         296 B         103 kB
+├ ƒ /api/artist/upload                               296 B         103 kB
+├ ƒ /api/auth/login                                  296 B         103 kB
+├ ƒ /api/auth/logout                                 296 B         103 kB
+├ ƒ /api/auth/me                                     296 B         103 kB
+├ ƒ /api/auth/signup                                 296 B         103 kB
+├ ƒ /api/chat                                        296 B         103 kB
+├ ƒ /api/contact                                     296 B         103 kB
+├ ƒ /api/health                                      296 B         103 kB
+├ ƒ /api/marketplace/admin                           296 B         103 kB
+├ ƒ /api/marketplace/admin/orders                    296 B         103 kB
+├ ƒ /api/marketplace/admin/payouts                   296 B         103 kB
+├ ƒ /api/marketplace/admin/review                    296 B         103 kB
+├ ƒ /api/marketplace/apply                           296 B         103 kB
+├ ƒ /api/marketplace/artist/affiliate                296 B         103 kB
+├ ƒ /api/marketplace/artist/analytics                296 B         103 kB
+├ ƒ /api/marketplace/artist/assets                   296 B         103 kB
+├ ƒ /api/marketplace/artist/payouts                  296 B         103 kB
+├ ƒ /api/marketplace/assets                          296 B         103 kB
+├ ƒ /api/marketplace/checkout                        296 B         103 kB
+├ ƒ /api/marketplace/checkout/quote                  296 B         103 kB
+├ ƒ /api/marketplace/coupons                         296 B         103 kB
+├ ƒ /api/marketplace/download                        296 B         103 kB
+├ ƒ /api/marketplace/licenses                        296 B         103 kB
+├ ƒ /api/marketplace/licenses/[id]/certificate       296 B         103 kB
+├ ƒ /api/marketplace/media                           296 B         103 kB
+├ ƒ /api/marketplace/orders/[id]                     296 B         103 kB
+├ ƒ /api/marketplace/payments/callback               296 B         103 kB
+├ ƒ /api/marketplace/payments/providers              296 B         103 kB
+├ ƒ /api/marketplace/payments/sandbox                296 B         103 kB
+├ ƒ /api/marketplace/subscriptions                   296 B         103 kB
+├ ƒ /api/marketplace/upload/complete                 296 B         103 kB
+├ ƒ /api/marketplace/upload/part                     296 B         103 kB
+├ ƒ /api/marketplace/upload/session                  296 B         103 kB
+├ ƒ /api/marketplace/verify/[serial]                 296 B         103 kB
+├ ƒ /api/media/[id]                                  296 B         103 kB
+├ ƒ /api/media/legacy                                296 B         103 kB
+├ ƒ /api/newsletter                                  296 B         103 kB
+├ ƒ /api/orders                                      296 B         103 kB
+├ ƒ /api/reservations                                296 B         103 kB
+├ ○ /api/search-index                                296 B         103 kB          5m      1y
+├ ƒ /api/webinar/[slug]/signal                       296 B         103 kB
+├ ƒ /api/webinar/[slug]/stream                       296 B         103 kB
+├ ○ /robots.txt                                      296 B         103 kB          1h      1y
+└ ○ /sitemap.xml                                     296 B         103 kB          1h      1y
++ First Load JS shared by all                       102 kB
+  ├ chunks/1255-8dc91b756d944555.js                46.2 kB
+  ├ chunks/4bd1b696-100b9d70ed4e49c1.js            54.2 kB
+  └ other shared chunks (total)                    2.04 kB
+
+
+ƒ Middleware                                       35.8 kB
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+

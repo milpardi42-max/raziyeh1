@@ -1,0 +1,17 @@
+import { getSite } from "@/lib/data/queries";
+import { founderStatistics } from "@/lib/data/founder-statistics";
+export const dynamic = "force-dynamic";
+import type { Metadata } from "next";
+import type { Locale } from "@/lib/i18n/types";
+import RaziehPortfolioClient from "./RaziehClient";
+
+export const metadata: Metadata = {
+  title: { absolute: "راضیه خیری‌پور — طراح پترن و استاد دانشگاه | Razieh Kheiripour" },
+  description:
+    "پورتفولیو حرفه‌ای راضیه خیری‌پور — طراح پترن، کاغذ دیواری، پارچه و پرده | Professional portfolio of Razieh Kheiripour — Pattern, Wallpaper, Textile & Drapery Designer",
+};
+
+export default async function RaziehPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  return <RaziehPortfolioClient locale={locale as Locale} stats={await founderStatistics(await getSite())} />;
+}

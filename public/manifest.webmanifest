@@ -1,0 +1,40 @@
+{
+  "name": "آتلیه رزی — پنل مدیریت",
+  "short_name": "پنل رزی",
+  "description": "مدیریت سایت، فروشگاه، آکادمی و سفارش‌ها از گوشی — آتلیه رزی",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/admin/fa?source=pwa",
+  "scope": "/admin/",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#1e2230",
+  "theme_color": "#b5713a",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "داشبورد",
+      "short_name": "داشبورد",
+      "url": "/admin/fa?section=dashboard",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "رزرو رویدادها",
+      "short_name": "رزروها",
+      "url": "/admin/fa?section=reservations",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "سفارش‌های فروشگاه",
+      "short_name": "فروشگاه",
+      "url": "/admin/fa/marketplace",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
