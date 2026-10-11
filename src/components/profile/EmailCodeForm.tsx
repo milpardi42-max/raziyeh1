@@ -8,6 +8,7 @@ import { RolePicker, type AccountRole } from "./RolePicker";
 import { TermsModal } from "@/components/ui/TermsModal";
 import { useLocale } from "@/components/providers/AppProviders";
 import { withCsrf } from "@/lib/security/csrf-client";
+import { sessionCookieWorks } from "@/lib/auth/session-client";
 import { SESSION_FETCH } from "@/lib/http";
 import { href } from "@/lib/utils";
 
@@ -32,6 +33,18 @@ const MESSAGES: Record<string, { fa: string; en: string }> = {
   email_expired: { fa: "لینک ورود منقضی شده است؛ لینک تازه بگیرید.", en: "The sign-in link expired — request a new one." },
   email_failed: { fa: "ورود انجام نشد. لطفاً دوباره تلاش کنید.", en: "Sign-in failed. Please try again." },
   network: { fa: "خطای شبکه. لطفاً دوباره تلاش کنید.", en: "Network error. Please try again." },
+  csrf_missing: {
+    fa: "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را یک‌بار دوباره بارگذاری کنید و سپس تلاش کنید (یا پیش‌نمایش را در تب جداگانه باز کنید).",
+    en: "The request was blocked by this preview's security settings. Please reload the page and try again (or open the preview in its own tab).",
+  },
+  csrf_mismatch: {
+    fa: "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید.",
+    en: "The security session expired. Please reload the page.",
+  },
+  session_cookie_blocked: {
+    fa: "حساب شما ساخته شد و کد درست بود، اما مرورگر این پیش‌نمایش اجازهٔ ذخیرهٔ کوکی ورود را نمی‌دهد؛ به همین دلیل در صفحهٔ بعد از حساب خارج می‌شوید. لطفاً پیش‌نمایش را در یک تب جداگانه باز کنید یا از دامنهٔ اصلی سایت استفاده کنید.",
+    en: "Your account is created and the code was correct, but this preview browser is blocking the sign-in cookie, so you would be signed out on the next page. Please open the preview in its own tab, or use the site's real domain.",
+  },
   server_error: { fa: "خطای سرور. لطفاً بعداً تلاش کنید.", en: "Server error. Please try again later." },
   terms_required: { fa: "برای ساخت حساب باید شرایط و مقررات را بپذیرید.", en: "Please accept the terms & conditions to create an account." },
   email_no_account_seller: {
@@ -188,6 +201,14 @@ export function EmailCodeForm({ entry, role, onRoleChange, returnTo, onBack }: E
           setBusy(false);
           setErr(t(data?.error ?? "network"));
           setCode("");
+          return;
+        }
+
+        // The cookie must actually have survived, otherwise the visitor would be
+        // bounced to the login page one click later, with no explanation.
+        if (!(await sessionCookieWorks())) {
+          setBusy(false);
+          setErr(t("session_cookie_blocked"));
           return;
         }
 

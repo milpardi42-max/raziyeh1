@@ -85,10 +85,16 @@ async function redisCmd(args: string[]) {
 async function fileRead(): Promise<StoredUser[]> {
   try {
     const raw = await fs.readFile(FILE_PATH, "utf8");
-    return JSON.parse(raw) as StoredUser[];
+    // A BOM or a half-written file must degrade to "no users yet" instead of
+    // taking signup/login down with a 500.
+    const json = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    if (!json.trim()) return [];
+    return JSON.parse(json) as StoredUser[];
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return [];
+    console.warn("[users] unreadable store, starting from an empty list:", String(error).slice(0, 160));
+    return [];
   }
 }
 

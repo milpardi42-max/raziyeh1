@@ -10,6 +10,7 @@ import { Field, Input } from "@/components/ui/Input";
 import { TermsModal } from "@/components/ui/TermsModal";
 import { GoogleButton } from "./GoogleButton";
 import { EmailCodeForm } from "./EmailCodeForm";
+import { sessionCookieWorks } from "@/lib/auth/session-client";
 import { RolePicker } from "./RolePicker";
 import { href } from "@/lib/utils";
 
@@ -35,6 +36,15 @@ const ERROR_MESSAGES: Record<string, { fa: string; en: string }> = {
   admin_not_configured: { fa: "حساب مدیر روی سرور پیکربندی نشده است.", en: "Admin account is not configured on the server." },
   too_many_attempts: { fa: "تعداد تلاش‌های زیاد. لطفاً کمی صبر کنید.", en: "Too many attempts. Please wait a moment." },
   network: { fa: "خطای شبکه. لطفاً دوباره تلاش کنید.", en: "Network error. Please try again." },
+  csrf_missing: {
+    fa: "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را یک‌بار دوباره بارگذاری کنید (یا پیش‌نمایش را در تب جداگانه باز کنید).",
+    en: "The request was blocked by this preview's security settings. Please reload the page (or open the preview in its own tab).",
+  },
+  csrf_mismatch: { fa: "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید.", en: "The security session expired. Please reload the page." },
+  session_cookie_blocked: {
+    fa: "ورود انجام شد اما مرورگر این پیش‌نمایش اجازهٔ ذخیرهٔ کوکی ورود را نمی‌دهد؛ در صفحهٔ بعد از حساب خارج می‌شوید. لطفاً پیش‌نمایش را در یک تب جداگانه باز کنید یا از دامنهٔ اصلی سایت استفاده کنید.",
+    en: "You signed in, but this preview browser is blocking the sign-in cookie, so you would be signed out on the next page. Please open the preview in its own tab, or use the site's real domain.",
+  },
   server_error: { fa: "خطای سرور. لطفاً بعداً دوباره تلاش کنید.", en: "Server error. Please try again later." },
   google_not_configured: { fa: "ورود با گوگل هنوز برای این سایت فعال نشده است.", en: "Google sign-in is not configured for this site yet." },
   google_cancelled: { fa: "ورود با گوگل لغو شد.", en: "Google sign-in was cancelled." },
@@ -123,6 +133,7 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
       const r = await login(email, password);
       setBusy(false);
       if (!r.ok) return setErr(getError(r.error ?? "invalid"));
+      if (!(await sessionCookieWorks())) return setErr(getError("session_cookie_blocked"));
       // Redirect based on role
       router.push(href(locale, "/account"));
       return;

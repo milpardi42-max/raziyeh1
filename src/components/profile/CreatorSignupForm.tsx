@@ -119,6 +119,10 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
             unauthorized: fa ? "برای این کار باید وارد حساب خود شوید." : "Please sign in first.",
             too_many_attempts: fa ? "تلاش‌های زیاد. کمی بعد دوباره امتحان کنید." : "Too many attempts. Please try again later.",
             server_error: fa ? "خطای سرور. لطفاً بعداً تلاش کنید." : "Server error. Please try again later.",
+        csrf_missing: fa
+          ? "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را دوباره بارگذاری کنید یا پیش‌نمایش را در تب جداگانه باز کنید."
+          : "The request was blocked by this preview's security settings. Reload the page or open the preview in its own tab.",
+        csrf_mismatch: fa ? "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید." : "The security session expired. Please reload the page.",
           };
           setErrMsg(upgradeErrors[data?.error ?? ""] ?? (fa ? "ارتقای حساب انجام نشد." : "The upgrade could not be completed."));
           return;
@@ -152,6 +156,10 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
         invalid: fa ? "اطلاعات وارد شده معتبر نیست." : "Please check your details.",
         network: fa ? "خطای شبکه. لطفاً دوباره تلاش کنید." : "Network error. Please try again.",
         server_error: fa ? "خطای سرور. لطفاً بعداً تلاش کنید." : "Server error. Please try again later.",
+        csrf_missing: fa
+          ? "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را دوباره بارگذاری کنید یا پیش‌نمایش را در تب جداگانه باز کنید."
+          : "The request was blocked by this preview's security settings. Reload the page or open the preview in its own tab.",
+        csrf_mismatch: fa ? "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید." : "The security session expired. Please reload the page.",
       };
       setErrMsg(errorMap[r.error ?? ""] ?? (fa ? "خطایی رخ داد." : "An error occurred."));
       return;
