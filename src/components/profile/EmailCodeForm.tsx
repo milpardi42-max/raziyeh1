@@ -264,7 +264,7 @@ export function EmailCodeForm({ entry, role, onRoleChange, returnTo, onBack }: E
               <ShieldCheck aria-hidden="true" />
               <span>
                 {fa
-                  ? `حالت آزمایشی — ایمیل واقعی ارسال نشده است. کد شما: ${devCode}`
+                  ? `حالت تست — ایمیل واقعی ارسال نشده است. کد شما: ${devCode}`
                   : `Test mode — no real e-mail was sent. Your code: ${devCode}`}
               </span>
             </p>

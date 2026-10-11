@@ -9,7 +9,11 @@ import { findUserByEmail } from "@/lib/data/users";
 import { appOrigin } from "@/lib/request-origin";
 import { createLoginCode, discardLoginCode } from "@/lib/auth/email-code";
 import { sendLoginMail } from "@/lib/auth/login-mail";
-import { emailLoginEnabled, emailLoginSignupAllowed } from "@/lib/auth/email-login-mode";
+import {
+  emailLoginEnabled,
+  emailLoginSignupAllowed,
+  emailTestModeAppliesTo,
+} from "@/lib/auth/email-login-mode";
 import { mailProvider } from "@/lib/marketplace/config";
 import type { NextRequest } from "next/server";
 import type { Locale } from "@/lib/i18n/types";
@@ -63,10 +67,12 @@ export async function POST(req: NextRequest) {
    * Real mode check. With no mail provider the message would only be written to
    * the outbox — visitors would be told "a code was sent" and then wait forever.
    * In production that is answered honestly (and visibly in the UI) instead of
-   * silently swallowing the request; in development the outbox path stays, which
-   * is how the flow is tested before credentials exist.
+   * silently swallowing the request, unless the operator explicitly turned on
+   * EMAIL_LOGIN_TEST_MODE for a staging/demo site.
    */
-  if (mailProvider() === "outbox" && process.env.NODE_ENV === "production") {
+  const outboxOnly = mailProvider() === "outbox";
+  const testMode = outboxOnly && emailTestModeAppliesTo(email);
+  if (outboxOnly && process.env.NODE_ENV === "production" && !testMode) {
     return applySecurityHeaders(
       req,
       NextResponse.json({ ok: false, error: "email_not_configured" }, withNoStore({ status: 503 })),
@@ -142,7 +148,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const devMode = process.env.NODE_ENV !== "production" && mailProvider() === "outbox";
+  const devMode = outboxOnly && (process.env.NODE_ENV !== "production" || testMode);
+  if (devMode && process.env.NODE_ENV === "production") {
+    // Loud on purpose: this mode hands a working sign-in code to whoever loads the page.
+    console.warn(
+      `[email-login] TEST MODE is active in production for ${email} — the sign-in code was returned in the API response. Turn EMAIL_LOGIN_TEST_MODE off before opening the site to the public.`,
+    );
+  }
 
   return applySecurityHeaders(
     req,

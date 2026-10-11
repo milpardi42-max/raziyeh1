@@ -34,7 +34,7 @@ test("request endpoint is CSRF-protected and rate limited", () => {
 
 test("the dev code is only exposed outside production and without a mail provider", () => {
   const route = read("src/app/api/auth/email/request/route.ts");
-  assert.match(route, /process\.env\.NODE_ENV !== "production" && mailProvider\(\) === "outbox"/);
+  assert.match(route, /const devMode = outboxOnly && \(process\.env\.NODE_ENV !== "production" \|\| testMode\)/);
   assert.match(route, /\.\.\.\(devMode \? \{ devCode: created\.code, devLink: link \} : \{\}\)/);
 });
 
@@ -79,7 +79,7 @@ test("e-mail login configuration flags exist and are documented", () => {
 
 test("real mode: production without a provider refuses honestly instead of pretending", () => {
   const route = read("src/app/api/auth/email/request/route.ts");
-  assert.match(route, /mailProvider\(\) === "outbox" && process\.env\.NODE_ENV === "production"/);
+  assert.match(route, /outboxOnly && process\.env\.NODE_ENV === "production" && !testMode/);
   assert.match(route, /error: "email_not_configured" \}, withNoStore\(\{ status: 503 \}\)/);
   // a refused delivery must never leave a guessable code behind
   assert.match(route, /if \(delivery\?\.status === "failed"\) \{/);
@@ -119,4 +119,23 @@ test("the mail diagnostics tool exists and is wired to npm scripts", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.scripts["mail:test"], "node scripts/mail-test.mjs");
   assert.equal(pkg.scripts["mail:status"], "node scripts/mail-test.mjs --status");
+});
+
+test("test mode is explicit, restrictable and honest", () => {
+  const mode = read("src/lib/auth/email-login-mode.ts");
+  assert.match(mode, /EMAIL_LOGIN_TEST_MODE/);
+  assert.match(mode, /EMAIL_LOGIN_TEST_EMAILS/);
+  assert.match(mode, /export function emailTestModeAppliesTo\(email: string\): boolean/);
+  assert.match(mode, /if \(allowed\.length === 0\) return true;/);
+
+  const route = read("src/app/api/auth/email/request/route.ts");
+  assert.match(route, /const outboxOnly = mailProvider\(\) === "outbox";/);
+  assert.match(route, /const testMode = outboxOnly && emailTestModeAppliesTo\(email\);/);
+  assert.match(route, /outboxOnly && process\.env\.NODE_ENV === "production" && !testMode/);
+  // production test mode logs a warning every time it hands out a code
+  assert.match(route, /\[email-login\] TEST MODE is active in production/);
+
+  const status = read("src/app/api/auth/email/status/route.ts");
+  assert.match(status, /testMode: !realDelivery,/);
+  assert.match(status, /testEmails: testMode \? emailTestModeAddresses\(\) : \[\]/);
 });
