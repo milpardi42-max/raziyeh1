@@ -1199,6 +1199,186 @@ html[lang="fa"] .pf-hero-title span {
   font-size: 0.85rem !important;
 }
 
+/* ──────────────────────────────────────────────────────────
+   Divider + "Continue with Google" (login & signup forms)
+   ──────────────────────────────────────────────────────────
+   Google's own sign-in guidelines: the official four-colour "G" mark, at most
+   one border, no shadow noise, no outline/!important tricks, and a clear
+   hover/active/focus progression. Everything else uses the site design tokens,
+   so light and dark themes stay in sync. */
+
+.auth-form-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.auth-form-divider::before,
+.auth-form-divider::after {
+  content: "";
+  flex: 1 1 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-strong));
+}
+
+.auth-form-divider::after {
+  background: linear-gradient(to left, transparent, var(--border-strong));
+}
+
+/* the divider lines fade away from the label in RTL too */
+[dir="rtl"] .auth-form-divider::before {
+  background: linear-gradient(to left, transparent, var(--border-strong));
+}
+
+[dir="rtl"] .auth-form-divider::after {
+  background: linear-gradient(to right, transparent, var(--border-strong));
+}
+
+.auth-oauth {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  /* keeps the label optically centred while the mark sits at the inline start */
+  padding: 0 46px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    translate var(--dur-fast) var(--ease-out);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.auth-oauth__mark {
+  position: absolute;
+  inset-inline-start: 15px;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--background);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: scale var(--dur-base) var(--ease-out);
+}
+
+.auth-oauth__logo {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.auth-oauth__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-oauth:hover:not(:disabled) {
+  background: var(--background-secondary);
+  border-color: var(--muted);
+  translate: 0 -1px;
+  box-shadow: var(--shadow-soft);
+}
+
+.auth-oauth:hover:not(:disabled) .auth-oauth__mark {
+  scale: 1.08;
+}
+
+.auth-oauth:active:not(:disabled) {
+  translate: 0 0;
+  scale: 0.995;
+  box-shadow: none;
+}
+
+.auth-oauth:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.auth-oauth:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+/* loading: spinner + label, the mark steps aside */
+.auth-oauth[data-state="connecting"],
+.auth-oauth[data-state="connecting"]:disabled {
+  padding: 0 16px;
+  background: var(--background-secondary);
+  border-color: var(--border-strong);
+  cursor: progress;
+  opacity: 1;
+}
+
+.auth-oauth[data-state="connecting"] .auth-oauth__mark {
+  display: none;
+}
+
+.auth-oauth__spinner {
+  order: -1;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: auth-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .auth-oauth {
+  box-shadow: none;
+}
+
+/* the signup panel is denser — keep the button in that rhythm */
+.auth-card__form--signup .auth-oauth {
+  height: 38px;
+  font-size: 0.84rem;
+}
+
+.auth-card__form--signup .auth-form-divider {
+  margin: 0;
+  font-size: 0.68rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-oauth,
+  .auth-oauth__mark,
+  .auth-oauth__spinner {
+    transition: none;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+  .auth-oauth:hover:not(:disabled) {
+    translate: 0 0;
+  }
+  .auth-oauth:hover:not(:disabled) .auth-oauth__mark {
+    scale: 1;
+  }
+}
+
 /* Responsive: stack on mobile */
 @media (max-width: 640px) {
   .auth-card__bg,

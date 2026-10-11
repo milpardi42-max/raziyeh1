@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { findUserByEmail, verifyPassword, type PublicUser } from "./data/users";
+import { findUserByEmail, verifyPassword, type PublicUser, type StoredUser } from "./data/users";
 import { getContent } from "./data/store";
 import { ADMIN_LOGIN_DISABLED, TEMPORARY_ADMIN_SESSION } from "./admin-access";
 import { SESSION_COOKIE, type SessionUser, readSessionToken } from "./session";
@@ -101,6 +101,30 @@ export async function verifyCredentials(
   } catch {
     return { ok: false, error: "server_error" };
   }
+}
+
+/**
+ * Builds the session payload for a stored user, dropping an artist link whose
+ * Artist record no longer exists (same rule the password login applies).
+ * Used by the Google OAuth callback.
+ */
+export async function sessionUserFromStored(stored: StoredUser): Promise<SessionUser> {
+  let artistId = stored.artistId;
+  if (stored.role === "artist" && artistId) {
+    try {
+      const content = await getContent();
+      if (!content.artists.some((a) => a.id === artistId)) artistId = undefined;
+    } catch {
+      artistId = undefined;
+    }
+  }
+  return {
+    id: stored.id,
+    name: stored.name,
+    email: stored.email,
+    role: stored.role,
+    ...(artistId ? { artistId } : {}),
+  };
 }
 
 export async function getSession(): Promise<SessionUser | null> {

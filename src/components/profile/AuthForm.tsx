@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth, useLocale } from "@/components/providers/AppProviders";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
 import { TermsModal } from "@/components/ui/TermsModal";
+import { GoogleButton } from "./GoogleButton";
 import { href } from "@/lib/utils";
 
 interface AuthFormProps {
@@ -34,6 +35,11 @@ const ERROR_MESSAGES: Record<string, { fa: string; en: string }> = {
   network: { fa: "خطای شبکه. لطفاً دوباره تلاش کنید.", en: "Network error. Please try again." },
   server_error: { fa: "خطای سرور. لطفاً بعداً دوباره تلاش کنید.", en: "Server error. Please try again later." },
   google_not_configured: { fa: "ورود با گوگل هنوز برای این سایت فعال نشده است.", en: "Google sign-in is not configured for this site yet." },
+  google_cancelled: { fa: "ورود با گوگل لغو شد.", en: "Google sign-in was cancelled." },
+  google_failed: { fa: "ورود با گوگل انجام نشد. لطفاً دوباره تلاش کنید.", en: "Google sign-in failed. Please try again." },
+  google_state: { fa: "نشست ورود منقضی شد. لطفاً دوباره روی دکمه گوگل بزنید.", en: "The sign-in session expired. Please press the Google button again." },
+  google_email_unverified: { fa: "ایمیل حساب گوگل شما تأیید نشده است.", en: "Your Google account e-mail is not verified." },
+  google_no_account: { fa: "حسابی با این ایمیل وجود ندارد؛ ابتدا ثبت‌نام کنید.", en: "No account exists for this e-mail yet — please sign up first." },
 };
 
 export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubmitting }: AuthFormProps) {
@@ -54,6 +60,31 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     if (msg) return fa ? msg.fa : msg.en;
     return fa ? "خطایی رخ داد." : "An error occurred.";
   }
+
+  /**
+   * The Google round-trip ends in a redirect back to this page with
+   * ?google_error=<code>; show it once, then strip it from the address bar.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("google_error");
+    if (!code) return;
+    const msg = ERROR_MESSAGES[code];
+    setErr(msg ? (fa ? msg.fa : msg.en) : fa ? "خطایی رخ داد." : "An error occurred.");
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("google_error");
+    window.history.replaceState(null, "", clean.toString());
+  }, [fa]);
+
+  /** Signup requires the terms checkbox — same gate as the e-mail form. */
+  const allowGoogleStart = useCallback(() => {
+    if (mode === "signup" && !termsAccepted) {
+      setErr(fa ? ERROR_MESSAGES.terms_required.fa : ERROR_MESSAGES.terms_required.en);
+      setTermsOpen(true);
+      return false;
+    }
+    return true;
+  }, [fa, mode, termsAccepted]);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -249,14 +280,13 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
         <span>{fa ? "یا" : "or"}</span>
       </div>
 
-      <button
-        type="button"
-        className="auth-google-button"
-        onClick={() => setErr(getError("google_not_configured"))}
-      >
-        <span className="auth-google-mark" aria-hidden="true">G</span>
-        {fa ? "ادامه با گوگل" : "Continue with Google"}
-      </button>
+      <GoogleButton
+        locale={locale}
+        entry={mode}
+        disabled={busy || autoSubmitting}
+        beforeStart={allowGoogleStart}
+        onError={setErr}
+      />
 
       <p className="text-center text-sm text-foreground-secondary">
         {mode === "login" ? (
