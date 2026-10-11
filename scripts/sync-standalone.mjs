@@ -9,7 +9,7 @@
  * Runs automatically as `postbuild`, and can be re-run any time:
  *   node scripts/sync-standalone.mjs
  */
-import { cpSync, existsSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -35,6 +35,21 @@ for (const { from, to, label } of copies) {
   }
   cpSync(from, to, { recursive: true, force: true });
   console.log(`✓ ${label} → ${to.slice(root.length + 1)} (${countFiles(to)} files)`);
+}
+
+/*
+ * The SMTP client is loaded with a dynamic import (`webpackIgnore`), so the bundler never
+ * sees it and it is missing from the standalone tree. Without this copy a container built
+ * from the Dockerfile answers `smtp_requires_nodemailer` as soon as SMTP_* is configured.
+ */
+const nodemailerSource = join(root, "node_modules/nodemailer");
+const nodemailerTarget = join(standalone, "node_modules/nodemailer");
+if (existsSync(nodemailerSource)) {
+  mkdirSync(join(standalone, "node_modules"), { recursive: true });
+  cpSync(nodemailerSource, nodemailerTarget, { recursive: true, force: true });
+  console.log(`✓ node_modules/nodemailer → node_modules/nodemailer (${countFiles(nodemailerTarget)} files)`);
+} else {
+  console.log("ℹ node_modules/nodemailer is absent — SMTP would report smtp_requires_nodemailer (RESEND_API_KEY is unaffected).");
 }
 
 console.log(failed ? "✖ standalone is incomplete" : "✓ standalone ready: node dist/.next/standalone/server.js");

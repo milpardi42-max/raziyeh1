@@ -85,10 +85,16 @@ async function redisCmd(args: string[]) {
 async function fileRead(): Promise<StoredUser[]> {
   try {
     const raw = await fs.readFile(FILE_PATH, "utf8");
-    return JSON.parse(raw) as StoredUser[];
+    // A BOM or a half-written file must degrade to "no users yet" instead of
+    // taking signup/login down with a 500.
+    const json = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    if (!json.trim()) return [];
+    return JSON.parse(json) as StoredUser[];
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return [];
+    console.warn("[users] unreadable store, starting from an empty list:", String(error).slice(0, 160));
+    return [];
   }
 }
 
@@ -320,6 +326,37 @@ async function createPendingArtist(
 
   await updateCollection("artists", [...content.artists, newArtist]);
   return artistId;
+}
+
+/**
+ * Self-service seller upgrade.
+ *
+ * A visitor who created a buyer account (with a password, a Google login or an
+ * e-mail code) can still become a seller later: this turns the account into an
+ * `artist` and attaches the same Artist profile the seller registration
+ * creates (`createPendingArtist`), so the showcase is identical either way.
+ *
+ * Idempotent: an account that is already an artist (or an admin) is returned
+ * untouched, so a repeated click can never create a second profile.
+ */
+export async function upgradeUserToArtist(
+  userId: string,
+  extra?: ArtistSignupExtra,
+): Promise<{ user: StoredUser; createdProfile: boolean } | null> {
+  const users = await getAllUsers();
+  const index = users.findIndex((u) => u.id === userId);
+  if (index === -1) return null;
+
+  const user = users[index];
+  if (user.role === "artist" || user.role === "admin") {
+    return { user, createdProfile: false };
+  }
+
+  const artistId = user.artistId ?? (await createPendingArtist(user.id, user.name, user.email, extra));
+  const updated: StoredUser = { ...user, role: "artist", artistId };
+  users[index] = updated;
+  await saveAllUsers(users);
+  return { user: updated, createdProfile: true };
 }
 
 export async function updateUser(

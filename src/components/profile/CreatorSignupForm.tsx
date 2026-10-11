@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Crown, Loader2 } from "lucide-react";
+import { BadgeCheck, Check, Crown, Loader2 } from "lucide-react";
 import { useAuth, useLocale } from "@/components/providers/AppProviders";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import { SuccessState } from "@/components/ui/States";
 import { TermsModal } from "@/components/ui/TermsModal";
+import { withCsrf } from "@/lib/security/csrf-client";
+import { SESSION_FETCH } from "@/lib/http";
 import { href } from "@/lib/utils";
 
 interface CreatorSignupFormProps {
@@ -25,6 +27,13 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
   const [selectedPlan, setSelectedPlan] = useState<"starter" | "pro" | "studio">("pro");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
+
+  /**
+   * Signed-in buyer: the same form becomes an *upgrade* — their account already
+   * exists, so no name/e-mail/password is collected and the call goes to
+   * /api/artist/upgrade instead of creating a second account.
+   */
+  const isUpgrade = user?.role === "user";
 
   // Already logged in as artist
   if (user?.role === "artist" || user?.role === "admin") {
@@ -61,13 +70,13 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
     const portfolioUrl = String(fd.get("portfolio") || "");
     const bio = String(fd.get("bio") || "");
 
-    if (password !== confirm) {
+    if (!isUpgrade && password !== confirm) {
       setState("idle");
       setErrMsg(fa ? "رمز عبور و تکرار آن یکسان نیستند." : "Passwords do not match.");
       return;
     }
 
-    if (password.length < 6) {
+    if (!isUpgrade && password.length < 6) {
       setState("idle");
       setErrMsg(fa ? "رمز عبور باید حداقل ۶ کاراکتر باشد." : "Password must be at least 6 characters.");
       return;
@@ -82,6 +91,51 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
           : "Please read and agree to the terms & conditions to complete signup.",
       );
       setTermsOpen(true); // open the modal so the user can read and agree
+      return;
+    }
+
+    const extras = {
+      phone,
+      city,
+      specialty,
+      instagram,
+      portfolioUrl,
+      bio,
+      planId: selectedPlan,
+    };
+
+    if (isUpgrade) {
+      try {
+        const res = await fetch("/api/artist/upgrade", withCsrf({
+          ...SESSION_FETCH,
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(extras),
+        }));
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+        if (!res.ok || !data?.ok) {
+          setState("error");
+          const upgradeErrors: Record<string, string> = {
+            unauthorized: fa ? "برای این کار باید وارد حساب خود شوید." : "Please sign in first.",
+            too_many_attempts: fa ? "تلاش‌های زیاد. کمی بعد دوباره امتحان کنید." : "Too many attempts. Please try again later.",
+            server_error: fa ? "خطای سرور. لطفاً بعداً تلاش کنید." : "Server error. Please try again later.",
+        csrf_missing: fa
+          ? "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را دوباره بارگذاری کنید یا پیش‌نمایش را در تب جداگانه باز کنید."
+          : "The request was blocked by this preview's security settings. Reload the page or open the preview in its own tab.",
+        csrf_mismatch: fa ? "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید." : "The security session expired. Please reload the page.",
+          };
+          setErrMsg(upgradeErrors[data?.error ?? ""] ?? (fa ? "ارتقای حساب انجام نشد." : "The upgrade could not be completed."));
+          return;
+        }
+      } catch {
+        setState("error");
+        setErrMsg(fa ? "خطای شبکه. لطفاً دوباره تلاش کنید." : "Network error. Please try again.");
+        return;
+      }
+
+      setState("ok");
+      // Full navigation: the refreshed session cookie is read by the dashboard.
+      setTimeout(() => window.location.assign(href(locale, "/artist")), 1200);
       return;
     }
 
@@ -102,6 +156,10 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
         invalid: fa ? "اطلاعات وارد شده معتبر نیست." : "Please check your details.",
         network: fa ? "خطای شبکه. لطفاً دوباره تلاش کنید." : "Network error. Please try again.",
         server_error: fa ? "خطای سرور. لطفاً بعداً تلاش کنید." : "Server error. Please try again later.",
+        csrf_missing: fa
+          ? "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را دوباره بارگذاری کنید یا پیش‌نمایش را در تب جداگانه باز کنید."
+          : "The request was blocked by this preview's security settings. Reload the page or open the preview in its own tab.",
+        csrf_mismatch: fa ? "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید." : "The security session expired. Please reload the page.",
       };
       setErrMsg(errorMap[r.error ?? ""] ?? (fa ? "خطایی رخ داد." : "An error occurred."));
       return;
@@ -120,12 +178,22 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
           <Check className="h-7 w-7" />
         </div>
         <h3 className="font-display text-xl font-bold text-foreground">
-          {fa ? "ثبت‌نام شما با موفقیت انجام شد!" : "Welcome to Rosie Atelier!"}
+          {isUpgrade
+            ? fa
+              ? "حساب شما به فروشنده ارتقا یافت!"
+              : "Your account is now a seller account!"
+            : fa
+              ? "ثبت‌نام شما با موفقیت انجام شد!"
+              : "Welcome to Rosie Atelier!"}
         </h3>
         <p className="text-xs sm:text-sm text-foreground-secondary max-w-md mx-auto leading-relaxed">
-          {fa
-            ? "پروفایل اختصاصی شما در صفحه هنرمندان ایجاد گردید و تب اقتصادی و غرفه اختصاصی شما در پنل فعال شد. در حال انتقال به داشبورد…"
-            : "Your dedicated profile has been created on the Artists Hub, and your Pro Showcase tab is active. Redirecting to your dashboard…"}
+          {isUpgrade
+            ? fa
+              ? "پروفایل هنرمندی شما ساخته شد و غرفه‌تان در صفحه هنرمندان فعال است. در حال انتقال به داشبورد…"
+              : "Your artist profile is created and your showcase is live on the artists page. Redirecting to your dashboard…"
+            : fa
+              ? "پروفایل اختصاصی شما در صفحه هنرمندان ایجاد گردید و تب اقتصادی و غرفه اختصاصی شما در پنل فعال شد. در حال انتقال به داشبورد…"
+              : "Your dedicated profile has been created on the Artists Hub, and your Pro Showcase tab is active. Redirecting to your dashboard…"}
         </p>
         <div className="flex justify-center pt-2">
           <Loader2 className="h-5 w-5 animate-spin text-accent" />
@@ -202,13 +270,32 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
       </div>
 
       {/* 2. Form Fields */}
+      {isUpgrade ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-accent/40 bg-accent/5 p-4">
+          <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+          <div className="text-xs leading-6 text-foreground-secondary">
+            <p className="font-semibold text-foreground">
+              {fa ? "این حساب به فروشنده ارتقا می‌یابد" : "This account will be upgraded to a seller"}
+            </p>
+            <p>
+              {fa
+                ? `با نام و ایمیل حساب فعلی شما (${user?.email ?? ""})؛ نیازی به ساختن حساب تازه یا رمز عبور نیست.`
+                : `Using the name and e-mail of your current account (${user?.email ?? ""}) — no new account or password needed.`}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={fa ? "نام و نام خانوادگی یا نام استودیو" : "Full name or Studio name"} className="sm:col-span-2">
+            <Input name="name" required autoComplete="name" placeholder={fa ? "مثلاً: نیلوفر راد" : "e.g. Niloufar Rad"} />
+          </Field>
+          <Field label={fa ? "ایمیل" : "Email"}>
+            <Input name="email" type="email" required dir="ltr" autoComplete="email" placeholder="artist@example.com" />
+          </Field>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={fa ? "نام و نام خانوادگی یا نام استودیو" : "Full name or Studio name"} className="sm:col-span-2">
-          <Input name="name" required autoComplete="name" placeholder={fa ? "مثلاً: نیلوفر راد" : "e.g. Niloufar Rad"} />
-        </Field>
-        <Field label={fa ? "ایمیل" : "Email"}>
-          <Input name="email" type="email" required dir="ltr" autoComplete="email" placeholder="artist@example.com" />
-        </Field>
         <Field label={fa ? "شماره تماس" : "Phone"}>
           <Input name="phone" type="tel" dir="ltr" autoComplete="tel" placeholder="0912..." />
         </Field>
@@ -235,12 +322,16 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
             placeholder={fa ? "درباره سابقه کاری، تکنیک‌های پتینه، طراحی پترن یا سبک هنری خود بنویسید…" : "Describe your techniques, patina experience or design style…"}
           />
         </Field>
-        <Field label={fa ? "رمز عبور (حداقل ۶ کاراکتر)" : "Password (min 6 chars)"}>
-          <Input name="password" type="password" required dir="ltr" minLength={6} autoComplete="new-password" />
-        </Field>
-        <Field label={fa ? "تکرار رمز عبور" : "Confirm password"}>
-          <Input name="confirm" type="password" required dir="ltr" minLength={6} autoComplete="new-password" />
-        </Field>
+        {!isUpgrade && (
+          <>
+            <Field label={fa ? "رمز عبور (حداقل ۶ کاراکتر)" : "Password (min 6 chars)"}>
+              <Input name="password" type="password" required dir="ltr" minLength={6} autoComplete="new-password" />
+            </Field>
+            <Field label={fa ? "تکرار رمز عبور" : "Confirm password"}>
+              <Input name="confirm" type="password" required dir="ltr" minLength={6} autoComplete="new-password" />
+            </Field>
+          </>
+        )}
       </div>
 
       {/* Terms & conditions — required, with a modal to read them */}
@@ -276,14 +367,22 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
       <div>
         <Button type="submit" size="lg" disabled={state === "loading"} className="w-full sm:w-auto min-w-44">
           {state === "loading" && <Loader2 className="h-4 w-4 animate-spin" />}
-          {fa ? "ثبت‌نام و ایجاد غرفه اختصاصی" : "Register & Open Storefront"}
+          {isUpgrade
+            ? fa
+              ? "ارتقا به فروشنده و ساخت غرفه"
+              : "Upgrade to seller & open storefront"
+            : fa
+              ? "ثبت‌نام و ایجاد غرفه اختصاصی"
+              : "Register & Open Storefront"}
         </Button>
-        <p className="mt-3 text-caption text-foreground-secondary">
-          {fa ? "قبلاً ثبت‌نام کرده‌اید؟" : "Already have an account?"}{" "}
-          <a href={href(locale, "/login")} className="font-medium text-foreground underline-offset-4 hover:underline">
-            {fa ? "ورود به حساب" : "Sign in"}
-          </a>
-        </p>
+        {!isUpgrade && (
+          <p className="mt-3 text-caption text-foreground-secondary">
+            {fa ? "قبلاً ثبت‌نام کرده‌اید؟" : "Already have an account?"}{" "}
+            <a href={href(locale, "/login")} className="font-medium text-foreground underline-offset-4 hover:underline">
+              {fa ? "ورود به حساب" : "Sign in"}
+            </a>
+          </p>
+        )}
       </div>
 
       <TermsModal

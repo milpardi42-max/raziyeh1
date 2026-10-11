@@ -546,7 +546,7 @@ export interface OutboxMessage {
   subject: string;
   html: string;
   text?: string;
-  kind: "delivery" | "receipt" | "sale-notice" | "payout" | "subscription" | "test" | "review";
+  kind: "delivery" | "receipt" | "sale-notice" | "payout" | "subscription" | "test" | "review" | "auth";
   status: "queued" | "sent" | "failed" | "logged";
   provider: "resend" | "smtp" | "outbox";
   error?: string;

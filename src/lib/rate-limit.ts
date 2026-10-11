@@ -36,6 +36,14 @@ const POLICIES: Record<string, { window: number; max: number }> = {
   "chat-create": { window: 60 * 60 * 1000, max: 5 },
   /** Live-chat messages: 30 per 5 min per conversation */
   "chat-message": { window: 5 * 60 * 1000, max: 30 },
+  /** Password-less e-mail sign-in: 5 codes per address per hour */
+  "email-otp": { window: 60 * 60 * 1000, max: 5 },
+  /** Password-less e-mail sign-in: 10 codes per IP per hour */
+  "email-otp-ip": { window: 60 * 60 * 1000, max: 10 },
+  /** Code guessing: 12 submitted codes per IP per 15 min */
+  "email-otp-verify": { window: 15 * 60 * 1000, max: 12 },
+  /** Buyer → seller upgrade: 5 per hour per IP */
+  "artist-upgrade": { window: 60 * 60 * 1000, max: 5 },
   /** Default (fallback) */
   default: { window: 15 * 60 * 1000, max: 8 },
 };

@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth, useLocale } from "@/components/providers/AppProviders";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
 import { TermsModal } from "@/components/ui/TermsModal";
+import { GoogleButton } from "./GoogleButton";
+import { EmailCodeForm } from "./EmailCodeForm";
+import { sessionCookieWorks } from "@/lib/auth/session-client";
+import { SESSION_FETCH } from "@/lib/http";
+import { RolePicker } from "./RolePicker";
 import { href } from "@/lib/utils";
 
 interface AuthFormProps {
@@ -32,8 +37,27 @@ const ERROR_MESSAGES: Record<string, { fa: string; en: string }> = {
   admin_not_configured: { fa: "حساب مدیر روی سرور پیکربندی نشده است.", en: "Admin account is not configured on the server." },
   too_many_attempts: { fa: "تعداد تلاش‌های زیاد. لطفاً کمی صبر کنید.", en: "Too many attempts. Please wait a moment." },
   network: { fa: "خطای شبکه. لطفاً دوباره تلاش کنید.", en: "Network error. Please try again." },
+  csrf_missing: {
+    fa: "به‌دلیل تنظیمات امنیتی این پیش‌نمایش، درخواست تأیید نشد. صفحه را یک‌بار دوباره بارگذاری کنید (یا پیش‌نمایش را در تب جداگانه باز کنید).",
+    en: "The request was blocked by this preview's security settings. Please reload the page (or open the preview in its own tab).",
+  },
+  csrf_mismatch: { fa: "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید.", en: "The security session expired. Please reload the page." },
+  email_not_configured: {
+    fa: "ورود با کد ایمیلی هنوز روی این سرور فعال نشده است. لطفاً از ایمیل و رمز عبور استفاده کنید.",
+    en: "E-mail code sign-in is not configured on this server yet. Please use e-mail & password.",
+  },
+  email_login_disabled: { fa: "ورود با کد ایمیلی غیرفعال است.", en: "E-mail code sign-in is disabled." },
+  session_cookie_blocked: {
+    fa: "ورود انجام شد اما مرورگر این پیش‌نمایش اجازهٔ ذخیرهٔ کوکی ورود را نمی‌دهد؛ در صفحهٔ بعد از حساب خارج می‌شوید. لطفاً پیش‌نمایش را در یک تب جداگانه باز کنید یا از دامنهٔ اصلی سایت استفاده کنید.",
+    en: "You signed in, but this preview browser is blocking the sign-in cookie, so you would be signed out on the next page. Please open the preview in its own tab, or use the site's real domain.",
+  },
   server_error: { fa: "خطای سرور. لطفاً بعداً دوباره تلاش کنید.", en: "Server error. Please try again later." },
   google_not_configured: { fa: "ورود با گوگل هنوز برای این سایت فعال نشده است.", en: "Google sign-in is not configured for this site yet." },
+  google_cancelled: { fa: "ورود با گوگل لغو شد.", en: "Google sign-in was cancelled." },
+  google_failed: { fa: "ورود با گوگل انجام نشد. لطفاً دوباره تلاش کنید.", en: "Google sign-in failed. Please try again." },
+  google_state: { fa: "نشست ورود منقضی شد. لطفاً دوباره روی دکمه گوگل بزنید.", en: "The sign-in session expired. Please press the Google button again." },
+  google_email_unverified: { fa: "ایمیل حساب گوگل شما تأیید نشده است.", en: "Your Google account e-mail is not verified." },
+  google_no_account: { fa: "حسابی با این ایمیل وجود ندارد؛ ابتدا ثبت‌نام کنید.", en: "No account exists for this e-mail yet — please sign up first." },
 };
 
 export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubmitting }: AuthFormProps) {
@@ -47,6 +71,8 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
   const [showConfirm, setShowConfirm] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
+  /** "code" shows the password-less e-mail form instead of e-mail + password. */
+  const [method, setMethod] = useState<"password" | "code">("password");
   const fa = locale === "fa";
 
   function getError(code: string): string {
@@ -54,6 +80,57 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     if (msg) return fa ? msg.fa : msg.en;
     return fa ? "خطایی رخ داد." : "An error occurred.";
   }
+
+  /**
+   * The Google round-trip ends in a redirect back to this page with
+   * ?google_error=<code>; show it once, then strip it from the address bar.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    // A failed magic link returns with ?email_error=… — open the code form so
+    // the notice has somewhere to appear.
+    if (params.get("email_error")) {
+      setMethod("code");
+      return;
+    }
+    const code = params.get("google_error");
+    if (!code) return;
+    const msg = ERROR_MESSAGES[code];
+    setErr(msg ? (fa ? msg.fa : msg.en) : fa ? "خطایی رخ داد." : "An error occurred.");
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("google_error");
+    window.history.replaceState(null, "", clean.toString());
+  }, [fa]);
+
+  /**
+   * Only open the password-less form when the server can actually deliver a
+   * message. In production with no mail provider configured, the visitor is told
+   * so here instead of typing an address that could never receive a code.
+   */
+  const openCodeMethod = useCallback(async () => {
+    setErr("");
+    try {
+      const res = await fetch("/api/auth/email/status", { ...SESSION_FETCH });
+      const data = (await res.json().catch(() => null)) as { available?: boolean; error?: string } | null;
+      if (res.ok && data && data.available === false) {
+        setErr(getError(data.error ?? "email_not_configured"));
+        return;
+      }
+    } catch {
+      // Status unreachable — let the code form try; it reports its own errors.
+    }
+    setMethod("code");
+  }, [getError]);
+
+  /** Signup requires the terms checkbox — same gate as the e-mail form. */
+  const allowGoogleStart = useCallback(() => {
+    if (mode === "signup" && !termsAccepted) {
+      setErr(fa ? ERROR_MESSAGES.terms_required.fa : ERROR_MESSAGES.terms_required.en);
+      setTermsOpen(true);
+      return false;
+    }
+    return true;
+  }, [fa, mode, termsAccepted]);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -82,6 +159,7 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
       const r = await login(email, password);
       setBusy(false);
       if (!r.ok) return setErr(getError(r.error ?? "invalid"));
+      if (!(await sessionCookieWorks())) return setErr(getError("session_cookie_blocked"));
       // Redirect based on role
       router.push(href(locale, "/account"));
       return;
@@ -98,6 +176,21 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     }
     router.push(href(locale, "/account"));
   };
+
+  /* Password-less e-mail sign-in replaces the whole password form. */
+  if (method === "code") {
+    return (
+      <EmailCodeForm
+        entry={mode}
+        role={role}
+        onRoleChange={setRole}
+        onBack={() => {
+          setMethod("password");
+          setErr("");
+        }}
+      />
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
@@ -176,31 +269,10 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
         </Field>
       )}
 
-      {/* Role selector — only on signup */}
+      {/* Role selector — only on signup, shared with the e-mail code and Google methods */}
       {mode === "signup" && (
         <Field label={fa ? "نوع حساب" : "Account type"}>
-          <div className="flex gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="account_role"
-                value="user"
-                checked={role === "user"}
-                onChange={() => setRole("user")}
-              />
-              {fa ? "خریدار" : "Buyer"}
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="account_role"
-                value="artist"
-                checked={role === "artist"}
-                onChange={() => setRole("artist")}
-              />
-              {fa ? "هنرمند / طراح" : "Artist / Designer"}
-            </label>
-          </div>
+          <RolePicker value={role} onChange={setRole} disabled={busy || autoSubmitting} />
         </Field>
       )}
 
@@ -249,13 +321,32 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
         <span>{fa ? "یا" : "or"}</span>
       </div>
 
+      <GoogleButton
+        locale={locale}
+        entry={mode}
+        role={role}
+        disabled={busy || autoSubmitting}
+        beforeStart={allowGoogleStart}
+        onError={setErr}
+      />
+
+      {/* Password-less alternative for visitors who would rather not type a password. */}
       <button
         type="button"
-        className="auth-google-button"
-        onClick={() => setErr(getError("google_not_configured"))}
+        onClick={openCodeMethod}
+        disabled={busy || autoSubmitting}
+        className="auth-alt-method"
       >
-        <span className="auth-google-mark" aria-hidden="true">G</span>
-        {fa ? "ادامه با گوگل" : "Continue with Google"}
+        <KeyRound className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          {mode === "login"
+            ? fa
+              ? "ورود با کد یک‌بارمصرف ایمیلی"
+              : "Sign in with an e-mail code"
+            : fa
+              ? "ثبت‌نام با کد یک‌بارمصرف ایمیلی"
+              : "Sign up with an e-mail code"}
+        </span>
       </button>
 
       <p className="text-center text-sm text-foreground-secondary">
