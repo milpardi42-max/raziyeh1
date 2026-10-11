@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 import type { NextRequest } from "next/server";
 import { LOCALES, type Locale } from "@/lib/i18n/types";
 import { signPayload } from "@/lib/session";
+import { appOrigin } from "@/lib/request-origin";
+import { safeReturnPath } from "@/lib/auth/return-path";
 
 /**
  * Google Sign-In — server helpers for the OAuth 2.0 "authorization code" flow.
@@ -58,22 +60,8 @@ export function isGoogleConfigured(): boolean {
   return googleConfig() !== null;
 }
 
-/**
- * Absolute public origin of the running app.
- * NEXT_PUBLIC_SITE_URL wins; otherwise the proxy headers of the current request
- * are used so the redirect URI always matches the host the visitor is on
- * (localhost during development, the real domain in production).
- */
-export function appOrigin(req: NextRequest): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "");
-  if (configured) return configured;
-
-  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || req.headers.get("host") || "";
-  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const proto = forwardedProto || (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
-  return host ? `${proto}://${host}` : req.nextUrl.origin;
-}
+/** Re-exported so callers can keep importing it from this module. */
+export { appOrigin } from "@/lib/request-origin";
 
 export function googleCallbackUrl(req: NextRequest, config: GoogleConfig): string {
   return config.redirectUri ?? `${appOrigin(req)}/api/auth/google/callback`;
@@ -107,15 +95,8 @@ function fromB64url(value: string): string {
   return Buffer.from(value, "base64url").toString("utf8");
 }
 
-/** Only same-origin, locale-prefixed paths may be used as a return target. */
-export function safeReturnPath(value: string | undefined | null, locale: Locale): string {
-  const fallback = `/${locale}/account`;
-  if (!value) return fallback;
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return fallback;
-  if (trimmed.startsWith("/api/") || trimmed.startsWith("/admin")) return fallback;
-  return trimmed.slice(0, 300);
-}
+/** Re-exported so callers can keep importing it from this module. */
+export { safeReturnPath } from "@/lib/auth/return-path";
 
 export async function createSignedState(
   locale: Locale,

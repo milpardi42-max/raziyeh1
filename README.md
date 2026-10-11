@@ -324,6 +324,7 @@ session and admin-managed runtime content. Every page is `force-dynamic`.
    | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | yes | persistent admin content (serverless FS is read-only) |
    | `NEXT_PUBLIC_SITE_URL` | yes | canonical URL for `sitemap.xml`, `robots.txt`, OG tags |
    | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | optional | turns on the "Continue with Google" button (see [GOOGLE-SIGNIN.md](GOOGLE-SIGNIN.md)) |
+   | `RESEND_API_KEY` or `SMTP_*` | optional | delivers the password-less e-mail sign-in code/link (see [EMAIL-LOGIN.md](EMAIL-LOGIN.md)) |
    See `.env.example` for details. **Redeploy after adding env vars** (env changes alone do not rebuild).
 4. Verify: open `https://<site>/api/health` — expect `"persistent": true` and `"configured": true`.
 5. Optional: **Domains** → connect your own domain.

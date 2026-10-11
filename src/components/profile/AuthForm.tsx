@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useAuth, useLocale } from "@/components/providers/AppProviders";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
 import { TermsModal } from "@/components/ui/TermsModal";
 import { GoogleButton } from "./GoogleButton";
+import { EmailCodeForm } from "./EmailCodeForm";
 import { href } from "@/lib/utils";
 
 interface AuthFormProps {
@@ -53,6 +54,8 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
   const [showConfirm, setShowConfirm] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
+  /** "code" shows the password-less e-mail form instead of e-mail + password. */
+  const [method, setMethod] = useState<"password" | "code">("password");
   const fa = locale === "fa";
 
   function getError(code: string): string {
@@ -67,6 +70,12 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
    */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // A failed magic link returns with ?email_error=… — open the code form so
+    // the notice has somewhere to appear.
+    if (params.get("email_error")) {
+      setMethod("code");
+      return;
+    }
     const code = params.get("google_error");
     if (!code) return;
     const msg = ERROR_MESSAGES[code];
@@ -129,6 +138,19 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     }
     router.push(href(locale, "/account"));
   };
+
+  /* Password-less e-mail sign-in replaces the whole password form. */
+  if (method === "code") {
+    return (
+      <EmailCodeForm
+        entry={mode}
+        onBack={() => {
+          setMethod("password");
+          setErr("");
+        }}
+      />
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
@@ -287,6 +309,28 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
         beforeStart={allowGoogleStart}
         onError={setErr}
       />
+
+      {/* Password-less alternative for visitors who would rather not type a password. */}
+      <button
+        type="button"
+        onClick={() => {
+          setErr("");
+          setMethod("code");
+        }}
+        disabled={busy || autoSubmitting}
+        className="auth-alt-method"
+      >
+        <KeyRound className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          {mode === "login"
+            ? fa
+              ? "ورود با کد یک‌بارمصرف ایمیلی"
+              : "Sign in with an e-mail code"
+            : fa
+              ? "ثبت‌نام با کد یک‌بارمصرف ایمیلی"
+              : "Sign up with an e-mail code"}
+        </span>
+      </button>
 
       <p className="text-center text-sm text-foreground-secondary">
         {mode === "login" ? (

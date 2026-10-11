@@ -1379,6 +1379,118 @@ html[lang="fa"] .pf-hero-title span {
   }
 }
 
+/* ──────────────────────────────────────────────────────────
+   Password-less e-mail sign-in (code + magic link)
+   ────────────────────────────────────────────────────────── */
+
+/* Secondary "sign in with an e-mail code" option under the Google button. */
+.auth-alt-method {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground-secondary);
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+
+.auth-alt-method:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--foreground);
+  background: var(--accent-soft);
+}
+
+.auth-alt-method:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.auth-alt-method:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-card__form--signup .auth-alt-method {
+  height: 38px;
+  font-size: 0.82rem;
+}
+
+/* Notice showing which address the code went to. */
+.auth-code__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background-secondary);
+  color: var(--foreground-secondary);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  animation: auth-auto-fade-in 0.35s var(--ease-out) both;
+}
+
+.auth-code__notice-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* The 6-digit field: big, evenly spaced, unmistakably a code. */
+.auth-code__input {
+  height: 52px !important;
+  text-align: center;
+  font-size: 1.4rem !important;
+  font-weight: 600;
+  letter-spacing: 0.55em;
+  text-indent: 0.55em;
+  font-variant-numeric: tabular-nums;
+}
+
+.auth-card__form--signup .auth-code__input {
+  height: 46px !important;
+}
+
+/* Development-only hint when no mail provider is connected. */
+.auth-code__dev {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+  color: var(--foreground);
+  font-size: 0.8rem;
+  font-weight: 500;
+  direction: rtl;
+}
+
+.auth-code__dev svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--warning);
+}
+
+[dir="ltr"] .auth-code__dev {
+  direction: ltr;
+}
+
 /* Responsive: stack on mobile */
 @media (max-width: 640px) {
   .auth-card__bg,
