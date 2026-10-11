@@ -151,6 +151,34 @@ MARKETPLACE_EMAIL_FROM="Rosie Atelier <no-reply@your-domain.com>"
 
 ---
 
+## ۲.۲ نسخهٔ سریع: Netlify + Resend (بدون دامنه، حدود ۱۰ دقیقه)
+
+۱. **Resend** — در resend.com ثبت‌نام کن (با همان ایمیلی که می‌خواهی اولین تست را ببینی) →
+   **API Keys → Create API Key** → کلید `re_…` را کپی کن (فقط یک‌بار نشان داده می‌شود).
+۲. **Netlify → Site configuration → Environment variables** این متغیرها را اضافه کن:
+
+| متغیر | مقدار |
+| --- | --- |
+| `RESEND_API_KEY` | `re_…` |
+| `MARKETPLACE_EMAIL_FROM` | `Rosie Atelier <onboarding@resend.dev>` |
+| `NEXT_PUBLIC_SITE_URL` | `https://<your-site>.netlify.app` |
+| `AUTH_SECRET` | یک رشتهٔ تصادفی و طولانی |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب مدیر سایت |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | از upstash.com (رایگان) |
+
+> روی Netlify فایل‌سیستم در زمان اجرا خواندنی است؛ بدون Upstash نه کاربران و نه کدهای ورود
+> ذخیره نمی‌شوند و `/api/health` مقدار `persistent: false` می‌دهد. این دو متغیر اجباری‌اند.
+
+۳. **Deploys → Trigger deploy → Clear cache and deploy site** (متغیرهای محیطی فقط با دیپلوی جدید اعمال می‌شوند).
+۴. **بررسی:** `/api/health` → `persistent: true` و `configured: true`؛ سپس در `/fa/signup` با ایمیل
+   خودت کد بگیر → باید ایمیل واقعی برسد (پوشهٔ اسپم را هم ببین).
+۵. **برای کاربران واقعی:** در Resend یک دامنه اضافه کن، رکوردهای SPF/DKIM را در DNS بگذار و
+   `MARKETPLACE_EMAIL_FROM` را به آدرس روی همان دامنه تغییر بده → دیپلوی مجدد.
+   بدون دامنهٔ تأییدشده، Resend فقط به ایمیلِ خودِ حساب اجازهٔ ارسال می‌دهد (`onboarding@resend.dev`).
+
+⚠️ Netlify از بعضی شبکه‌های ایران بدون VPN باز نمی‌شود؛ پیش از انتشار عمومی از داخل ایران تست کن
+(راهنمای میزبانی ایران‌دوست در README، بخش «Deploy»).
+
 ## ۳. تنظیمات اختیاری
 
 | متغیر | پیش‌فرض | کار |
