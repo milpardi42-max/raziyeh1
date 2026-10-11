@@ -42,6 +42,8 @@ const POLICIES: Record<string, { window: number; max: number }> = {
   "email-otp-ip": { window: 60 * 60 * 1000, max: 10 },
   /** Code guessing: 12 submitted codes per IP per 15 min */
   "email-otp-verify": { window: 15 * 60 * 1000, max: 12 },
+  /** Buyer → seller upgrade: 5 per hour per IP */
+  "artist-upgrade": { window: 60 * 60 * 1000, max: 5 },
   /** Default (fallback) */
   default: { window: 15 * 60 * 1000, max: 8 },
 };

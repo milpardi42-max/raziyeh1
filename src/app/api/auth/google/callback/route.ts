@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { createUser, findUserByEmail } from "@/lib/data/users";
+import { createUser, findUserByEmail, upgradeUserToArtist } from "@/lib/data/users";
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions, sessionUserFromStored } from "@/lib/auth";
 import { sendAdminPushSafely } from "@/lib/admin-push";
 import type { NextRequest } from "next/server";
@@ -74,8 +74,14 @@ export async function GET(req: NextRequest) {
   if (!identity.emailVerified) return fail("google_email_unverified");
 
   // ----- existing account, or a brand-new one -----------------------------
+  // The seller role is only ever applied when the visitor started from the
+  // *signup* page with "هنرمند / طراح" selected (see createSignedState).
+  const wantsArtist = payload.e === "signup" && payload.a === "artist";
+  const role: "user" | "artist" = wantsArtist ? "artist" : "user";
+
   let stored = await findUserByEmail(identity.email);
   let created = false;
+  let upgraded = false;
 
   if (!stored) {
     if (!config.allowSignup) return fail("google_no_account");
@@ -86,7 +92,7 @@ export async function GET(req: NextRequest) {
         identity.name,
         identity.email,
         crypto.randomBytes(32).toString("base64url"),
-        "user",
+        role,
       );
       created = true;
     } catch {
@@ -94,13 +100,24 @@ export async function GET(req: NextRequest) {
       stored = await findUserByEmail(identity.email);
       if (!stored) return fail("google_failed");
     }
+  } else if (wantsArtist && stored.role === "user") {
+    // Buyer who now asked to sell: attach the pending artist profile instead of
+    // dead-ending on "this e-mail is already registered".
+    const result = await upgradeUserToArtist(stored.id);
+    if (result) {
+      stored = result.user;
+      upgraded = result.createdProfile;
+    }
   }
 
-  if (created) {
+  if (created || upgraded) {
     void sendAdminPushSafely({
-      title: "عضو جدید سایت",
-      body: "یک کاربر با حساب گوگل در سایت ثبت‌نام کرد.",
-      url: "/admin/fa?section=buyers",
+      title: role === "artist" ? "ثبت‌نام طراح جدید" : "عضو جدید سایت",
+      body:
+        role === "artist"
+          ? "یک کاربر با حساب گوگل ثبت‌نام هنرمند/فروشنده را انجام داد؛ برای بررسی درخواست وارد پنل شوید."
+          : "یک کاربر با حساب گوگل در سایت ثبت‌نام کرد.",
+      url: role === "artist" ? "/admin/fa?section=artists-signup" : "/admin/fa?section=buyers",
       tag: `signup-google-${stored.id}`,
     });
   }

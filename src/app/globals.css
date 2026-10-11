@@ -1380,6 +1380,85 @@ html[lang="fa"] .pf-hero-title span {
 }
 
 /* ──────────────────────────────────────────────────────────
+   Account-type picker (buyer / artist) — shared by every signup method
+   ────────────────────────────────────────────────────────── */
+
+.auth-role {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.auth-role__option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.auth-role__option:hover {
+  border-color: var(--muted);
+}
+
+.auth-role__option[data-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.auth-role__option:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.auth-role__option[data-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.auth-role__icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--foreground-secondary);
+}
+
+.auth-role__option[data-selected="true"] .auth-role__icon {
+  color: var(--accent);
+}
+
+.auth-role__label {
+  display: block;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1.5;
+}
+
+.auth-role__hint {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-card__form--signup .auth-role__option {
+  padding: 7px 9px;
+}
+
+.auth-card__form--signup .auth-role__hint {
+  display: none;
+}
+
+/* ──────────────────────────────────────────────────────────
    Password-less e-mail sign-in (code + magic link)
    ────────────────────────────────────────────────────────── */
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createUser, toPublicUser } from "@/lib/data/users";
+import { createUser, toPublicUser, upgradeUserToArtist } from "@/lib/data/users";
 import { sendAdminPushSafely } from "@/lib/admin-push";
-import { createSessionToken, publicUserToSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { createSessionToken, getSession, publicUserToSession, sessionUserFromStored, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { withNoStore } from "@/lib/http";
 import { clientIp, recordAttempt, retryAfterSeconds, tooManyAttempts } from "@/lib/rate-limit";
 import { verifyCsrf } from "@/lib/security/csrf";
@@ -70,8 +70,39 @@ export async function POST(req: NextRequest) {
   const role = body.role === "artist" ? "artist" : "user";
 
   const extra = role === "artist"
-    ? { phone, city, specialty, instagram, portfolioUrl, planId: body.planId || "pro" as const, bio }
+    ? { phone, city, specialty, instagram, portfolioUrl, planId: body.planId || "pro" as const, bio, termsAt: new Date().toISOString() }
     : undefined;
+
+  /*
+   * Already signed in? A buyer who fills the seller form (or the shared signup
+   * form with "هنرمند / طراح" selected) is upgrading their own account — not
+   * creating a second one. Without this branch the request would fail with
+   * `email_taken` and the visitor would be stuck forever as a buyer, which is
+   * exactly what happened to accounts created with Google or an e-mail code.
+   */
+  if (role === "artist") {
+    const current = await getSession();
+    if (current && current.email.toLowerCase() === email && current.role === "user") {
+      const upgraded = await upgradeUserToArtist(current.id, extra);
+      if (upgraded) {
+        const upgradedSession = await sessionUserFromStored(upgraded.user);
+        const res = NextResponse.json(
+          { ok: true, user: upgradedSession, upgraded: upgraded.createdProfile },
+          withNoStore(),
+        );
+        res.cookies.set(SESSION_COOKIE, await createSessionToken(upgradedSession), sessionCookieOptions(req));
+        if (upgraded.createdProfile) {
+          await sendAdminPushSafely({
+            title: "درخواست فروشندگی جدید",
+            body: "یک خریدار حساب خود را به هنرمند/فروشنده ارتقا داد؛ برای بررسی درخواست وارد پنل شوید.",
+            url: "/admin/fa?section=artists-signup",
+            tag: `artist-upgrade-${upgraded.user.id}`,
+          });
+        }
+        return applySecurityHeaders(req, res);
+      }
+    }
+  }
 
   try {
     const stored = await createUser(name, email, password, role, undefined, extra);

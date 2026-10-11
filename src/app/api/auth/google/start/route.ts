@@ -51,13 +51,23 @@ export async function POST(req: NextRequest) {
     locale?: string;
     returnTo?: string;
     entry?: string;
+    /** Signup form only: "artist" asks for a seller account + pending profile. */
+    role?: string;
   } | null;
 
   const locale: Locale = body?.locale === "en" ? "en" : "fa";
   const entry: GoogleEntryPage = body?.entry === "signup" ? "signup" : "login";
-  const returnTo = body?.returnTo ? sanitizePlainText(body.returnTo).slice(0, 300) : undefined;
+  const wantsArtist = body?.role === "artist";
+  const requested = body?.returnTo ? sanitizePlainText(body.returnTo).slice(0, 300) : undefined;
+  // A seller signup lands on the artist dashboard unless the visitor asked for
+  // somewhere specific.
+  const returnTo = requested ?? (entry === "signup" && wantsArtist ? `/${locale}/artist` : undefined);
 
-  const { state, payload } = await createSignedState(locale, { returnTo, entry });
+  const { state, payload } = await createSignedState(locale, {
+    returnTo,
+    entry,
+    wantsArtist,
+  });
   const pkce = createPkcePair();
   const redirectUri = googleCallbackUrl(req, config);
 

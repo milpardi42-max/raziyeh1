@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MailCheck, PencilLine, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
+import { RolePicker, type AccountRole } from "./RolePicker";
 import { TermsModal } from "@/components/ui/TermsModal";
 import { useLocale } from "@/components/providers/AppProviders";
 import { withCsrf } from "@/lib/security/csrf-client";
@@ -33,11 +34,18 @@ const MESSAGES: Record<string, { fa: string; en: string }> = {
   network: { fa: "خطای شبکه. لطفاً دوباره تلاش کنید.", en: "Network error. Please try again." },
   server_error: { fa: "خطای سرور. لطفاً بعداً تلاش کنید.", en: "Server error. Please try again later." },
   terms_required: { fa: "برای ساخت حساب باید شرایط و مقررات را بپذیرید.", en: "Please accept the terms & conditions to create an account." },
+  email_no_account_seller: {
+    fa: "با این ایمیل حسابی وجود ندارد؛ از صفحهٔ ثبت‌نام، ثبت‌نام کنید.",
+    en: "No account exists for this e-mail yet — please sign up first.",
+  },
 };
 
 interface EmailCodeFormProps {
   /** "signup" asks for the terms checkbox and creates the account after verification. */
   entry: "login" | "signup";
+  /** Role chosen on the signup form ("artist" asks for a seller account). */
+  role: AccountRole;
+  onRoleChange: (role: AccountRole) => void;
   /** Same-origin path to open after a successful sign-in. */
   returnTo?: string;
   /** Back to the e-mail + password form. */
@@ -55,7 +63,7 @@ interface EmailCodeFormProps {
  * `devCode`, which is shown in a clearly-marked test notice — that is how the
  * flow can be exercised before Resend/SMTP credentials exist.
  */
-export function EmailCodeForm({ entry, returnTo, onBack }: EmailCodeFormProps) {
+export function EmailCodeForm({ entry, role, onRoleChange, returnTo, onBack }: EmailCodeFormProps) {
   const { locale } = useLocale();
   const fa = locale === "fa";
 
@@ -121,7 +129,7 @@ export function EmailCodeForm({ entry, returnTo, onBack }: EmailCodeFormProps) {
           ...SESSION_FETCH,
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: address, locale, entry, returnTo }),
+          body: JSON.stringify({ email: address, locale, entry, role, returnTo }),
         }));
         const data = (await res.json().catch(() => null)) as
           | { ok?: boolean; error?: string; retryAfterS?: number; devCode?: string }
@@ -150,7 +158,7 @@ export function EmailCodeForm({ entry, returnTo, onBack }: EmailCodeFormProps) {
         setErr(t("network"));
       }
     },
-    [busy, email, entry, fa, locale, returnTo, t, termsAccepted],
+    [busy, email, entry, fa, locale, returnTo, role, t, termsAccepted],
   );
 
   const verifyCode = useCallback(
@@ -280,6 +288,12 @@ export function EmailCodeForm({ entry, returnTo, onBack }: EmailCodeFormProps) {
 
   return (
     <form onSubmit={requestCode} className="space-y-4" noValidate>
+      {entry === "signup" && (
+        <Field label={fa ? "نوع حساب" : "Account type"}>
+          <RolePicker value={role} onChange={onRoleChange} disabled={busy} />
+        </Field>
+      )}
+
       <Field
         label={entry === "signup" ? (fa ? "ایمیل" : "E-mail") : fa ? "ایمیل حساب" : "Account e-mail"}
         hint={

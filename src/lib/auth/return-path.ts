@@ -6,8 +6,12 @@ import type { Locale } from "@/lib/i18n/types";
  * routes) falls back to the visitor's account page — this is what keeps the
  * "returnTo" value from turning into an open redirect.
  */
-export function safeReturnPath(value: string | undefined | null, locale: Locale): string {
-  const fallback = `/${locale}/account`;
+export function safeReturnPath(
+  value: string | undefined | null,
+  locale: Locale,
+  fallbackPath?: string,
+): string {
+  const fallback = fallbackPath ?? `/${locale}/account`;
   if (!value) return fallback;
   const trimmed = value.trim();
   if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return fallback;

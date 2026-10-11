@@ -40,6 +40,8 @@ export async function POST(req: NextRequest) {
     locale?: string;
     entry?: string;
     returnTo?: string;
+    /** Signup form only: "artist" asks for a seller account + pending profile. */
+    role?: string;
   } | null;
 
   const email = sanitizePlainText(body?.email ?? "").trim().toLowerCase();
@@ -95,6 +97,7 @@ export async function POST(req: NextRequest) {
     email,
     locale,
     entry,
+    role: body?.role === "artist" ? "artist" : "user",
     returnTo: sanitizePlainText(body?.returnTo ?? "").slice(0, 300),
   });
 

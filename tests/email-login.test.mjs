@@ -43,8 +43,11 @@ test("both verification paths issue the standard session cookie", () => {
   assert.match(route, /SESSION_COOKIE, await createSessionToken\(session\), sessionCookieOptions\(req\)/);
   assert.match(route, /verifyLoginToken\(token\)/);
   assert.match(route, /verifyLoginCode\(email, code\)/);
+  // the role chosen on the signup form reaches the account creation
+  assert.match(route, /createUser\(nameFromEmail\(email\), email, randomPassword\(\), verified\.role\)/);
   // the magic-link redirect target is validated
-  assert.match(route, /safeReturnPath\(returnTo, locale\)/);
+  assert.match(route, /safeReturnPath\(body\?\.returnTo, locale,/);
+  assert.match(route, /safeReturnPath\(returnTo, locale,/);
 });
 
 test("user interfaces offer the e-mail code option and the test-mode notice", () => {

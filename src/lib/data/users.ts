@@ -322,6 +322,37 @@ async function createPendingArtist(
   return artistId;
 }
 
+/**
+ * Self-service seller upgrade.
+ *
+ * A visitor who created a buyer account (with a password, a Google login or an
+ * e-mail code) can still become a seller later: this turns the account into an
+ * `artist` and attaches the same Artist profile the seller registration
+ * creates (`createPendingArtist`), so the showcase is identical either way.
+ *
+ * Idempotent: an account that is already an artist (or an admin) is returned
+ * untouched, so a repeated click can never create a second profile.
+ */
+export async function upgradeUserToArtist(
+  userId: string,
+  extra?: ArtistSignupExtra,
+): Promise<{ user: StoredUser; createdProfile: boolean } | null> {
+  const users = await getAllUsers();
+  const index = users.findIndex((u) => u.id === userId);
+  if (index === -1) return null;
+
+  const user = users[index];
+  if (user.role === "artist" || user.role === "admin") {
+    return { user, createdProfile: false };
+  }
+
+  const artistId = user.artistId ?? (await createPendingArtist(user.id, user.name, user.email, extra));
+  const updated: StoredUser = { ...user, role: "artist", artistId };
+  users[index] = updated;
+  await saveAllUsers(users);
+  return { user: updated, createdProfile: true };
+}
+
 export async function updateUser(
   id: string,
   patch: Partial<Pick<StoredUser, "name" | "artistId" | "role" | "passwordHash" | "passwordResetTokenHash" | "passwordResetExpiresAt">>,

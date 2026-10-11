@@ -43,6 +43,12 @@ export interface LoginCodeRecord {
    * successful verification on the magic-link route (which has no JS context).
    */
   entry: "login" | "signup";
+  /**
+   * Role chosen on the signup form ("artist" asks for a seller profile).
+   * Only ever honoured while the entry page is "signup"; a login code can never
+   * change an existing account's role.
+   */
+  role: "user" | "artist";
   locale: "fa" | "en";
   returnTo: string;
   consumedAt?: string;
@@ -127,6 +133,8 @@ export interface RequestCodeInput {
   locale: "fa" | "en";
   entry: "login" | "signup";
   returnTo: string;
+  /** Role requested on the signup form; ignored for "login" entries. */
+  role?: "user" | "artist";
 }
 
 export type RequestCodeResult =
@@ -168,6 +176,7 @@ export async function createLoginCode(input: RequestCodeInput): Promise<RequestC
     expiresAt,
     attempts: 0,
     entry: input.entry,
+    role: input.entry === "signup" && input.role === "artist" ? "artist" : "user",
     locale: input.locale,
     returnTo: input.returnTo.slice(0, 300),
   };
@@ -177,7 +186,7 @@ export async function createLoginCode(input: RequestCodeInput): Promise<RequestC
 }
 
 export type VerifyCodeResult =
-  | { ok: true }
+  | { ok: true; role: "user" | "artist"; entry: "login" | "signup"; locale: "fa" | "en" }
   | { ok: false; error: "not_found" | "expired" | "invalid" | "too_many_attempts" };
 
 export async function verifyLoginCode(emailInput: string, codeInput: string): Promise<VerifyCodeResult> {
@@ -207,11 +216,18 @@ export async function verifyLoginCode(emailInput: string, codeInput: string): Pr
 
   record.consumedAt = new Date(now).toISOString();
   await writeAll(records.map((item) => (item.email === email ? record : item)));
-  return { ok: true };
+  return { ok: true, role: record.role ?? "user", entry: record.entry, locale: record.locale };
 }
 
 export type VerifyTokenResult =
-  | { ok: true; email: string; locale: "fa" | "en"; entry: "login" | "signup"; returnTo: string }
+  | {
+      ok: true;
+      email: string;
+      locale: "fa" | "en";
+      entry: "login" | "signup";
+      role: "user" | "artist";
+      returnTo: string;
+    }
   | { ok: false; error: "invalid" | "expired" };
 
 /**
@@ -238,7 +254,14 @@ export async function verifyLoginToken(tokenInput: string): Promise<VerifyTokenR
 
     record.consumedAt = new Date(now).toISOString();
     await writeAll(records.map((item) => (item.email === record.email ? record : item)));
-    return { ok: true, email: record.email, locale: record.locale, entry: record.entry, returnTo: record.returnTo };
+    return {
+      ok: true,
+      email: record.email,
+      locale: record.locale,
+      entry: record.entry,
+      role: record.role ?? "user",
+      returnTo: record.returnTo,
+    };
   }
 
   return { ok: false, error: "invalid" };

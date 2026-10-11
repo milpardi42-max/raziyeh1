@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createUser, findUserByEmail } from "@/lib/data/users";
+import { createUser, findUserByEmail, upgradeUserToArtist, type StoredUser } from "@/lib/data/users";
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions, sessionUserFromStored } from "@/lib/auth";
 import { sendAdminPushSafely } from "@/lib/admin-push";
 import { withNoStore } from "@/lib/http";
@@ -43,7 +43,14 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
-  return finishSignIn(req, result.email, result.locale, result.entry, result.returnTo);
+  return finishSignIn({
+    req,
+    email: result.email,
+    locale: result.locale,
+    entry: result.entry,
+    role: result.role,
+    returnTo: result.returnTo,
+  });
 }
 
 /**
@@ -108,16 +115,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const stored = account ?? (await createUser(nameFromEmail(email), email, randomPassword(), "user"));
-  const session = await sessionUserFromStored(stored);
+  const resolved = account
+    ? await maybeUpgradeToArtist(account, verified)
+    : { user: await createUser(nameFromEmail(email), email, randomPassword(), verified.role), created: true, upgraded: false };
+
+  const session = await sessionUserFromStored(resolved.user);
+  const isArtist = session.role === "artist" || Boolean(session.artistId);
 
   const res = NextResponse.json(
     {
       ok: true,
       user: session,
-      created: !account,
+      created: resolved.created,
+      upgraded: resolved.upgraded,
       // Server-validated target: the page navigates to exactly this path.
-      returnTo: safeReturnPath(body?.returnTo, locale),
+      returnTo: safeReturnPath(body?.returnTo, locale, isArtist ? `/${locale}/artist` : undefined),
     },
     withNoStore(),
   );
@@ -127,14 +139,46 @@ export async function POST(req: NextRequest) {
 
 /* ------------------------------------------------------------------ */
 
+interface SignInInput {
+  req: NextRequest;
+  email: string;
+  locale: "fa" | "en";
+  entry: "login" | "signup";
+  role: "user" | "artist";
+  returnTo: string;
+}
+
+/**
+ * The role a signup code may apply. A code requested from the *login* form can
+ * never change an account: only the signup form, where the visitor explicitly
+ * picked "هنرمند / طراح", asks for a seller profile.
+ */
+async function maybeUpgradeToArtist(
+  account: StoredUser,
+  verified: { role: "user" | "artist"; entry: "login" | "signup" },
+): Promise<{ user: StoredUser; created: boolean; upgraded: boolean }> {
+  const wantsSeller = verified.entry === "signup" && verified.role === "artist";
+  if (!wantsSeller || account.role !== "user") {
+    return { user: account, created: false, upgraded: false };
+  }
+
+  const upgradedUser = await upgradeUserToArtist(account.id);
+  if (!upgradedUser) return { user: account, created: false, upgraded: false };
+
+  if (upgradedUser.createdProfile) {
+    void sendAdminPushSafely({
+      title: "درخواست فروشندگی جدید",
+      body: "یک کاربر با کد ایمیلی حساب خود را به هنرمند/فروشنده ارتقا داد؛ در انتظار بررسی.",
+      url: "/admin/fa?section=artists-signup",
+      tag: `artist-upgrade-email-${upgradedUser.user.id}`,
+    });
+  }
+
+  return { user: upgradedUser.user, created: false, upgraded: upgradedUser.createdProfile };
+}
+
 /** Shared tail of both verification paths: issue the session cookie. */
-async function finishSignIn(
-  req: NextRequest,
-  email: string,
-  locale: "fa" | "en",
-  entry: "login" | "signup",
-  returnTo: string,
-): Promise<NextResponse> {
+async function finishSignIn({ req, email, locale, entry, role, returnTo }: SignInInput): Promise<NextResponse> {
   const account = await findUserByEmail(email);
 
   if (!account && !emailLoginSignupAllowed()) {
@@ -145,9 +189,11 @@ async function finishSignIn(
 
   let stored = account;
   let created = false;
+  let upgraded = false;
+
   if (!stored) {
     try {
-      stored = await createUser(nameFromEmail(email), email, randomPassword(), "user");
+      stored = await createUser(nameFromEmail(email), email, randomPassword(), role);
       created = true;
     } catch {
       stored = await findUserByEmail(email);
@@ -157,19 +203,29 @@ async function finishSignIn(
         return res;
       }
     }
+  } else {
+    const resolved = await maybeUpgradeToArtist(stored, { role, entry });
+    stored = resolved.user;
+    upgraded = resolved.upgraded;
   }
 
-  if (created) {
+  if (created || upgraded) {
     void sendAdminPushSafely({
-      title: "عضو جدید سایت",
-      body: "یک کاربر با کد ایمیلی در سایت ثبت‌نام کرد.",
-      url: "/admin/fa?section=buyers",
+      title: role === "artist" ? "ثبت‌نام طراح جدید" : "عضو جدید سایت",
+      body:
+        role === "artist"
+          ? "یک کاربر با کد ایمیلی ثبت‌نام هنرمند/فروشنده را انجام داد؛ برای بررسی درخواست وارد پنل شوید."
+          : "یک کاربر با کد ایمیلی در سایت ثبت‌نام کرد.",
+      url: role === "artist" ? "/admin/fa?section=artists-signup" : "/admin/fa?section=buyers",
       tag: `signup-email-${stored.id}`,
     });
   }
 
   const session = await sessionUserFromStored(stored);
-  const res = NextResponse.redirect(new URL(safeReturnPath(returnTo, locale), appOrigin(req)));
+  const isArtist = session.role === "artist" || Boolean(session.artistId);
+  const target = safeReturnPath(returnTo, locale, isArtist ? `/${locale}/artist` : undefined);
+
+  const res = NextResponse.redirect(new URL(target, appOrigin(req)));
   res.cookies.set(SESSION_COOKIE, await createSessionToken(session), sessionCookieOptions(req));
   res.headers.set("cache-control", "private, no-store");
   return res;

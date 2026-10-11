@@ -83,6 +83,11 @@ export interface GoogleStatePayload {
   r: string;
   /** entry page, used when the flow has to fail back to the form */
   e: GoogleEntryPage;
+  /**
+   * Role the visitor picked on the signup form. Honoured only for the "signup"
+   * entry, so a Google login can never silently re-role an existing account.
+   */
+  a?: "artist";
   /** issue timestamp (ms) */
   ts: number;
 }
@@ -100,13 +105,16 @@ export { safeReturnPath } from "@/lib/auth/return-path";
 
 export async function createSignedState(
   locale: Locale,
-  options: { returnTo?: string | null; entry?: GoogleEntryPage } = {},
+  options: { returnTo?: string | null; entry?: GoogleEntryPage; wantsArtist?: boolean } = {},
 ): Promise<{ state: string; payload: GoogleStatePayload }> {
+  const entry: GoogleEntryPage = options.entry === "signup" ? "signup" : "login";
   const payload: GoogleStatePayload = {
     n: crypto.randomBytes(16).toString("hex"),
     l: LOCALES.includes(locale) ? locale : "fa",
     r: safeReturnPath(options.returnTo, locale),
-    e: options.entry === "signup" ? "signup" : "login",
+    e: entry,
+    // Only a signup may ask for the seller role.
+    ...(entry === "signup" && options.wantsArtist ? { a: "artist" as const } : {}),
     ts: Date.now(),
   };
   const body = b64url(JSON.stringify(payload));
@@ -128,12 +136,14 @@ export async function verifySignedState(token: string | null | undefined): Promi
     const payload = JSON.parse(fromB64url(body)) as GoogleStatePayload;
     if (typeof payload?.ts !== "number" || Date.now() - payload.ts > GOOGLE_STATE_TTL_MS) return null;
     if (typeof payload.n !== "string" || !payload.n) return null;
+    const entry: GoogleEntryPage = payload.e === "signup" ? "signup" : "login";
     return {
       n: payload.n,
       ts: payload.ts,
       l: LOCALES.includes(payload.l) ? payload.l : "fa",
       r: safeReturnPath(payload.r, payload.l),
-      e: payload.e === "signup" ? "signup" : "login",
+      e: entry,
+      ...(entry === "signup" && payload.a === "artist" ? { a: "artist" as const } : {}),
     };
   } catch {
     return null;

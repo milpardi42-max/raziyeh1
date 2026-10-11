@@ -10,6 +10,7 @@ import { Field, Input } from "@/components/ui/Input";
 import { TermsModal } from "@/components/ui/TermsModal";
 import { GoogleButton } from "./GoogleButton";
 import { EmailCodeForm } from "./EmailCodeForm";
+import { RolePicker } from "./RolePicker";
 import { href } from "@/lib/utils";
 
 interface AuthFormProps {
@@ -144,6 +145,8 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     return (
       <EmailCodeForm
         entry={mode}
+        role={role}
+        onRoleChange={setRole}
         onBack={() => {
           setMethod("password");
           setErr("");
@@ -229,31 +232,10 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
         </Field>
       )}
 
-      {/* Role selector — only on signup */}
+      {/* Role selector — only on signup, shared with the e-mail code and Google methods */}
       {mode === "signup" && (
         <Field label={fa ? "نوع حساب" : "Account type"}>
-          <div className="flex gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="account_role"
-                value="user"
-                checked={role === "user"}
-                onChange={() => setRole("user")}
-              />
-              {fa ? "خریدار" : "Buyer"}
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="account_role"
-                value="artist"
-                checked={role === "artist"}
-                onChange={() => setRole("artist")}
-              />
-              {fa ? "هنرمند / طراح" : "Artist / Designer"}
-            </label>
-          </div>
+          <RolePicker value={role} onChange={setRole} disabled={busy || autoSubmitting} />
         </Field>
       )}
 
@@ -305,6 +287,7 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
       <GoogleButton
         locale={locale}
         entry={mode}
+        role={role}
         disabled={busy || autoSubmitting}
         beforeStart={allowGoogleStart}
         onError={setErr}

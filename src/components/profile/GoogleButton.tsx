@@ -40,6 +40,12 @@ interface GoogleButtonProps {
   locale: Locale;
   /** Page the visitor is on — a failed round-trip returns to the same form. */
   entry: "login" | "signup";
+  /**
+   * Role chosen on the signup form. Passed to the server so a brand-new Google
+   * account is created as a seller when "هنرمند / طراح" is selected; ignored
+   * (and never applied to an existing account) for the login entry.
+   */
+  role?: "user" | "artist";
   /** Same-origin path to open after a successful sign-in. */
   returnTo?: string;
   /** True while the e-mail/password form is submitting. */
@@ -60,7 +66,7 @@ interface GoogleButtonProps {
  * configured it reports `google_not_configured` instead of bouncing the visitor
  * to Google, so the form stays usable.
  */
-export function GoogleButton({ locale, entry, returnTo, disabled, beforeStart, onError }: GoogleButtonProps) {
+export function GoogleButton({ locale, entry, role, returnTo, disabled, beforeStart, onError }: GoogleButtonProps) {
   const fa = locale === "fa";
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -97,7 +103,8 @@ export function GoogleButton({ locale, entry, returnTo, disabled, beforeStart, o
         ...SESSION_FETCH,
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ locale, entry, returnTo }),
+        // The server only honours `role` for the signup entry.
+        body: JSON.stringify({ locale, entry, role, returnTo }),
       }));
       const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
 
@@ -113,7 +120,7 @@ export function GoogleButton({ locale, entry, returnTo, disabled, beforeStart, o
       setConnecting(false);
       onError("network");
     }
-  }, [beforeStart, configured, connecting, disabled, entry, locale, onError, returnTo]);
+  }, [beforeStart, configured, connecting, disabled, entry, locale, onError, returnTo, role]);
 
   const label = connecting
     ? fa
