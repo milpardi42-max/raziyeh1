@@ -84,7 +84,7 @@ function status() {
     console.log("  ✓ Resend will deliver the messages. The From address must belong to a");
     console.log("    domain verified in your Resend account (SPF + DKIM).");
   } else {
-    console.log("  ✓ SMTP will deliver the messages. Required extra:  npm i nodemailer");
+    console.log("  ✓ SMTP will deliver the messages (the client is shipped with the app).");
   }
   console.log("");
   return provider;
@@ -135,7 +135,7 @@ async function sendWithSmtp(to) {
     nodemailer = await import("nodemailer");
   } catch {
     throw new Error(
-      "nodemailer is not installed. Run:  npm i nodemailer   (then start the app the same way)",
+      "nodemailer is not installed. Run:  npm ci   (it is a normal dependency of this app)",
     );
   }
   const transporter = nodemailer.default.createTransport({

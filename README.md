@@ -3,7 +3,7 @@
 Premium bilingual (فارسی RTL / English LTR) platform for **patterns · creators · portfolios · products · education**.
 
 Built with Next.js 15 (App Router), React 19, Tailwind v4 and a token-driven design system.
-Repository: [`milpardi42-max/raziye1`](https://github.com/milpardi42-max/raziye1) · Node.js SSR application.
+Repository: [`milpardi42-max/raziyeh1`](https://github.com/milpardi42-max/raziyeh1) · Node.js SSR application.
 
 > **Iran / no-VPN availability:** this code serves bundled and uploaded media from the site's own domain, but it cannot choose your hosting country, DNS route, or ISP reachability. For reliable access inside Iran, deploy the app and persistent media storage on an Iran-reachable provider and test on Iranian mobile/fixed networks. See [MEDIA-DELIVERY-IR.md](MEDIA-DELIVERY-IR.md).
 
@@ -44,8 +44,8 @@ Netlify and Vercel deployments are convenient for international access, but are 
 
 | Platform | Button |
 | --- | --- |
-| **Netlify** | [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/milpardi42-max/raziye1) |
-| **Vercel** | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/milpardi42-max/raziye1) |
+| **Netlify** | [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/milpardi42-max/raziyeh1) |
+| **Vercel** | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/milpardi42-max/raziyeh1) |
 
 After import, set environment variables (see `.env.example`):
 
@@ -312,7 +312,7 @@ portfolio/education flags & ordering, banners, SEO. Every save is live immediate
 This app is **server-rendered**: it uses middleware, route handlers (`/api/*`), a signed-cookie admin
 session and admin-managed runtime content. Every page is `force-dynamic`.
 
-1. **app.netlify.com → Add new site → Import an existing project → GitHub** → `milanopardi13/artikel` (branch `main`).
+1. **app.netlify.com → Add new site → Import an existing project → GitHub** → `milpardi42-max/raziyeh1` (branch `main`).
 2. The `netlify.toml` in this repo configures everything (build command, `.next` publish,
    `@netlify/plugin-nextjs`, Node 20, security headers). Leave build settings as-is.
 3. **Site configuration → Environment variables** — add:
@@ -348,8 +348,33 @@ audience is elsewhere.
 
 ### Other hosts (VPS / Docker / Liara / etc.)
 
-`npm ci && npm run build && npm start` on Node 20+. Set the same env vars; without Redis/Blob, content persists
-to `data/content.json` — keep that directory on a persistent volume.
+`npm ci && npm run build && npm start` on Node 20+ (use the Dockerfile for a container image — it builds the
+standalone output). Set the same env vars; without Redis/Blob, content persists to `data/content.json` — keep that
+directory on a persistent volume.
+
+**Real e-mail on these hosts** — one of these two blocks must be in the environment, then restart/redeploy:
+
+```bash
+RESEND_API_KEY=re_xxxxxxxx
+MARKETPLACE_EMAIL_FROM="Rosie Atelier <no-reply@your-domain.com>"
+
+# or SMTP (domain mailbox / Gmail app password / Iranian providers)
+SMTP_HOST=mail.your-domain.com SMTP_PORT=587 SMTP_SECURE=0 \
+SMTP_USER=no-reply@your-domain.com SMTP_PASS=xxxxxxxx
+```
+
+```bash
+docker run -d --name rosie -p 3000:3000 \
+  -e ADMIN_EMAIL=... -e ADMIN_PASSWORD=... -e AUTH_SECRET=... \
+  -e NEXT_PUBLIC_SITE_URL=https://your-domain.com \
+  -e RESEND_API_KEY=re_xxxxxxxx \
+  -e 'MARKETPLACE_EMAIL_FROM=Rosie Atelier <no-reply@your-domain.com>' \
+  -v rosie-data:/app/data \
+  ghcr.io/milpardi42-max/raziyeh1:main
+```
+
+Check it from the server before going live: `npm run mail:status` (no provider ⇒ exit 1) and
+`npm run mail:test -- you@example.com` (sends a real message). Full guide: [EMAIL-LOGIN.md](EMAIL-LOGIN.md).
 
 ## Performance notes
 

@@ -109,7 +109,9 @@ Valid for ${minutes} minutes, single use. If you did not request it, ignore this
 }
 
 /** Queues the sign-in e-mail; returns the outbox record id (useful in tests). */
-export async function sendLoginMail(input: LoginMailInput): Promise<{ id: string; status: string }> {
+export async function sendLoginMail(
+  input: LoginMailInput,
+): Promise<{ id: string; status: string; error?: string }> {
   const mail = buildLoginMail(input);
   const message = await queueMessage({
     to: input.email,
@@ -119,5 +121,5 @@ export async function sendLoginMail(input: LoginMailInput): Promise<{ id: string
     kind: "auth",
     meta: { purpose: "email-login", locale: input.locale },
   });
-  return { id: message.id, status: message.status };
+  return { id: message.id, status: message.status, error: message.error };
 }

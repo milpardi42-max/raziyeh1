@@ -139,3 +139,37 @@ test("test mode is explicit, restrictable and honest", () => {
   assert.match(status, /testMode: !realDelivery,/);
   assert.match(status, /testEmails: testMode \? emailTestModeAddresses\(\) : \[\]/);
 });
+
+test("a Linux host can install the project and send real e-mail", () => {
+  const pkg = JSON.parse(read("package.json"));
+  // The SMTP client must ship with the app: a real host should need no extra install.
+  assert.ok(pkg.dependencies.nodemailer, "nodemailer should be a dependency");
+  // A Windows-only SWC binary listed as a *dependency* makes `npm ci` fail with EBADPLATFORM
+  // on Linux — i.e. on Docker/Netlify/Vercel/any VPS. Next pulls the right binary itself.
+  assert.ok(!("@next/swc-win32-x64-msvc" in pkg.dependencies), "no platform-locked dependency");
+  assert.ok(!("@next/swc-win32-x64-msvc" in (pkg.optionalDependencies ?? {})), "not an optional one either");
+
+  // Docker/standalone builds must carry the dynamically-imported SMTP client along.
+  const sync = read("scripts/sync-standalone.mjs");
+  assert.match(sync, /node_modules\/nodemailer/);
+  assert.match(sync, /mkdirSync\(join\(standalone, "node_modules"\)/);
+
+  // The GitHub-side real send helper stays secret-only and refuses to run without a target.
+  const workflow = read(".github/mail-test-workflow.yml.example");
+  assert.match(workflow, /secrets\.RESEND_API_KEY/);
+  assert.match(workflow, /secrets\.SMTP_HOST/);
+  assert.match(workflow, /node scripts\/mail-test\.mjs "\$\{\{ steps\.target\.outputs\.to \}\}"/);
+  assert.ok(!/echo .*RESEND_API_KEY/.test(workflow), "the workflow must never print the key");
+});
+
+test("a refused delivery is logged and never reported as success", () => {
+  const route = read("src/app/api/auth/email/request/route.ts");
+  // the provider's reason must reach the server log — an operator has to be able to diagnose
+  assert.match(route, /console\.error\("\[email-login\] delivery failed:", delivery\.error\)/);
+  // a send that threw (no result at all) is treated exactly like a refusal
+  assert.match(route, /if \(!delivery \|\| delivery\.status === "failed"\)/);
+  const mail = read("src/lib/auth/login-mail.ts");
+  assert.match(mail, /status: string; error\?: string/);
+  // …and the provider's own message must survive the hop to this route
+  assert.match(mail, /return \{ id: message\.id, status: message\.status, error: message\.error \};/);
+});

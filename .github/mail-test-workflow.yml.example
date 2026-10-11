@@ -1,0 +1,69 @@
+name: Send a real test e-mail
+
+# The site always sends from its own server — that is the only place the provider key
+# lives. This workflow exists so the key itself can be checked from GitHub's runners,
+# which do have outbound mail access, before (or without) touching the production host.
+#
+# Credentials come from repository secrets — Settings → Secrets and variables → Actions:
+#   Option A (Resend):  RESEND_API_KEY
+#   Option B (SMTP):    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE
+#   Either way:         MARKETPLACE_EMAIL_FROM  (optional, e.g. "Rosie Atelier <no-reply@…>")
+# Secrets are never printed: the script only reports masked values.
+#
+# Trigger it from the Actions tab ("Run workflow"), or commit the destination address to
+# .github/mail-test-to (a single address) — handy for a branch that is not merged yet.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Destination address
+        required: true
+        type: string
+  push:
+    paths:
+      - .github/mail-test-to
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    env:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      MARKETPLACE_EMAIL_FROM: ${{ secrets.MARKETPLACE_EMAIL_FROM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Resolve the destination address
+        id: target
+        run: |
+          to="${{ inputs.to }}"
+          if [ -z "$to" ] && [ -f .github/mail-test-to ]; then
+            to="$(tr -d '[:space:]' < .github/mail-test-to)"
+          fi
+          if [ -z "$to" ]; then
+            echo "::error::No destination address — use 'Run workflow' or write one into .github/mail-test-to."
+            exit 1
+          fi
+          echo "to=$to" >> "$GITHUB_OUTPUT"
+
+      - name: Install the SMTP client (SMTP option only)
+        if: ${{ env.SMTP_HOST != '' }}
+        run: npm install nodemailer --no-save --no-audit --no-fund
+
+      - name: Show what was detected
+        run: node scripts/mail-test.mjs --status || true
+
+      - name: Send the real message
+        run: node scripts/mail-test.mjs "${{ steps.target.outputs.to }}"

@@ -132,15 +132,24 @@ export async function POST(req: NextRequest) {
   }
 
   const link = `${appOrigin(req)}/api/auth/email/verify?token=${encodeURIComponent(created.token)}`;
-  const delivery = await sendLoginMail({ email, code: created.code, link, locale, isNewAccount })
-    .catch(() => null);
+  const delivery = await sendLoginMail({ email, code: created.code, link, locale, isNewAccount }).catch(
+    (error: unknown) => {
+      console.error("[email-login] delivery threw before it could report a status:", error);
+      return null;
+    },
+  );
 
   /*
    * Real mode: if the provider refused the message (bad key, unverified sender,
    * quota, network), say so instead of claiming the code is on its way — and drop
-   * the code so a failed attempt cannot be guessed against a live secret.
+   * the code so a failed attempt cannot be guessed against a live secret. A missing
+   * result (the send threw) is treated the same way: never claim a delivery we
+   * cannot confirm.
    */
   if (delivery?.status === "failed") {
+    console.error("[email-login] delivery failed:", delivery.error);
+  }
+  if (!delivery || delivery.status === "failed") {
     await discardLoginCode(email);
     return applySecurityHeaders(
       req,
