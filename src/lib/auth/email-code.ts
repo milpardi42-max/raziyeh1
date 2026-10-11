@@ -185,6 +185,16 @@ export async function createLoginCode(input: RequestCodeInput): Promise<RequestC
   return { ok: true, code, token, expiresAt };
 }
 
+/**
+ * Removes the record for an address — used when the provider refused to send the
+ * message, so a code nobody received can never be verified.
+ */
+export async function discardLoginCode(emailInput: string): Promise<void> {
+  const email = normaliseEmail(emailInput);
+  const records = await readAll();
+  await writeAll(records.filter((record) => record.email !== email));
+}
+
 export type VerifyCodeResult =
   | { ok: true; role: "user" | "artist"; entry: "login" | "signup"; locale: "fa" | "en" }
   | { ok: false; error: "not_found" | "expired" | "invalid" | "too_many_attempts" };

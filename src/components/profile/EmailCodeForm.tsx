@@ -25,6 +25,14 @@ const MESSAGES: Record<string, { fa: string; en: string }> = {
     en: "Signing up with an e-mail code is currently disabled.",
   },
   email_login_disabled: { fa: "ورود با کد ایمیلی غیرفعال است.", en: "E-mail code sign-in is disabled." },
+  email_not_configured: {
+    fa: "ارسال ایمیل روی این سرور پیکربندی نشده است؛ لطفاً از ایمیل و رمز عبور استفاده کنید.",
+    en: "E-mail delivery is not configured on this server — please use e-mail & password instead.",
+  },
+  email_delivery_failed: {
+    fa: "ارسال ایمیل ناموفق بود. لطفاً چند لحظه بعد دوباره تلاش کنید؛ اگر تکرار شد به پشتیبانی اطلاع دهید.",
+    en: "The e-mail could not be delivered. Please try again in a moment — if it keeps failing, contact support.",
+  },
   invalid_code: { fa: "کد وارد‌شده درست نیست.", en: "That code is not correct." },
   code_expired: { fa: "کد منقضی شده است؛ کد تازه بگیرید.", en: "The code expired — request a new one." },
   too_many_attempts: { fa: "تلاش‌های زیاد. کمی بعد دوباره امتحان کنید.", en: "Too many attempts. Please try again later." },

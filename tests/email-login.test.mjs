@@ -76,3 +76,47 @@ test("e-mail login configuration flags exist and are documented", () => {
   assert.match(env, /EMAIL_LOGIN_ALLOW_SIGNUP/);
   assert.match(env, /EMAIL_LOGIN_TTL_MINUTES/);
 });
+
+test("real mode: production without a provider refuses honestly instead of pretending", () => {
+  const route = read("src/app/api/auth/email/request/route.ts");
+  assert.match(route, /mailProvider\(\) === "outbox" && process\.env\.NODE_ENV === "production"/);
+  assert.match(route, /error: "email_not_configured" \}, withNoStore\(\{ status: 503 \}\)/);
+  // a refused delivery must never leave a guessable code behind
+  assert.match(route, /if \(delivery\?\.status === "failed"\) \{/);
+  assert.match(route, /await discardLoginCode\(email\);/);
+  assert.match(route, /error: "email_delivery_failed" \}, withNoStore\(\{ status: 502 \}\)/);
+});
+
+test("the status endpoint reports whether a message can really be delivered", () => {
+  const status = read("src/app/api/auth/email/status/route.ts");
+  assert.match(status, /const realDelivery = provider !== "outbox"/);
+  assert.match(status, /emailLoginEnabled\(\)/);
+  assert.match(status, /error: available\s*\n?\s*\? null/);
+});
+
+test("the UI checks availability before asking for an address", () => {
+  const form = read("src/components/profile/AuthForm.tsx");
+  assert.match(form, /const openCodeMethod = useCallback\(async \(\) => \{/);
+  assert.match(form, /fetch\("\/api\/auth\/email\/status"/);
+  assert.match(form, /setErr\(getError\(data\.error \?\? "email_not_configured"\)\)/);
+  const codeForm = read("src/components/profile/EmailCodeForm.tsx");
+  assert.match(codeForm, /email_not_configured:/);
+  assert.match(codeForm, /email_delivery_failed:/);
+});
+
+test("discardLoginCode really removes the record", () => {
+  const store = read("src/lib/auth/email-code.ts");
+  assert.match(store, /export async function discardLoginCode\(emailInput: string\)/);
+  assert.match(store, /records\.filter\(\(record\) => record\.email !== email\)/);
+});
+
+test("the mail diagnostics tool exists and is wired to npm scripts", () => {
+  const script = read("scripts/mail-test.mjs");
+  assert.match(script, /function detectProvider\(\)/);
+  assert.match(script, /api\.resend\.com\/emails/);
+  assert.match(script, /nodemailer is not installed/);
+  assert.match(script, /\.env\.local/);
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(pkg.scripts["mail:test"], "node scripts/mail-test.mjs");
+  assert.equal(pkg.scripts["mail:status"], "node scripts/mail-test.mjs --status");
+});

@@ -7,7 +7,7 @@ import { sanitizePlainText } from "@/lib/security/sanitize";
 import { clientIp, recordAttempt, retryAfterSeconds, tooManyAttempts } from "@/lib/rate-limit";
 import { findUserByEmail } from "@/lib/data/users";
 import { appOrigin } from "@/lib/request-origin";
-import { createLoginCode } from "@/lib/auth/email-code";
+import { createLoginCode, discardLoginCode } from "@/lib/auth/email-code";
 import { sendLoginMail } from "@/lib/auth/login-mail";
 import { emailLoginEnabled, emailLoginSignupAllowed } from "@/lib/auth/email-login-mode";
 import { mailProvider } from "@/lib/marketplace/config";
@@ -56,6 +56,20 @@ export async function POST(req: NextRequest) {
     return applySecurityHeaders(
       req,
       NextResponse.json({ ok: false, error: "email_login_disabled" }, withNoStore({ status: 503 })),
+    );
+  }
+
+  /*
+   * Real mode check. With no mail provider the message would only be written to
+   * the outbox — visitors would be told "a code was sent" and then wait forever.
+   * In production that is answered honestly (and visibly in the UI) instead of
+   * silently swallowing the request; in development the outbox path stays, which
+   * is how the flow is tested before credentials exist.
+   */
+  if (mailProvider() === "outbox" && process.env.NODE_ENV === "production") {
+    return applySecurityHeaders(
+      req,
+      NextResponse.json({ ok: false, error: "email_not_configured" }, withNoStore({ status: 503 })),
     );
   }
 
@@ -114,6 +128,19 @@ export async function POST(req: NextRequest) {
   const link = `${appOrigin(req)}/api/auth/email/verify?token=${encodeURIComponent(created.token)}`;
   const delivery = await sendLoginMail({ email, code: created.code, link, locale, isNewAccount })
     .catch(() => null);
+
+  /*
+   * Real mode: if the provider refused the message (bad key, unverified sender,
+   * quota, network), say so instead of claiming the code is on its way — and drop
+   * the code so a failed attempt cannot be guessed against a live secret.
+   */
+  if (delivery?.status === "failed") {
+    await discardLoginCode(email);
+    return applySecurityHeaders(
+      req,
+      NextResponse.json({ ok: false, error: "email_delivery_failed" }, withNoStore({ status: 502 })),
+    );
+  }
 
   const devMode = process.env.NODE_ENV !== "production" && mailProvider() === "outbox";
 

@@ -11,6 +11,7 @@ import { TermsModal } from "@/components/ui/TermsModal";
 import { GoogleButton } from "./GoogleButton";
 import { EmailCodeForm } from "./EmailCodeForm";
 import { sessionCookieWorks } from "@/lib/auth/session-client";
+import { SESSION_FETCH } from "@/lib/http";
 import { RolePicker } from "./RolePicker";
 import { href } from "@/lib/utils";
 
@@ -41,6 +42,11 @@ const ERROR_MESSAGES: Record<string, { fa: string; en: string }> = {
     en: "The request was blocked by this preview's security settings. Please reload the page (or open the preview in its own tab).",
   },
   csrf_mismatch: { fa: "نشست امنیتی منقضی شده است. صفحه را دوباره بارگذاری کنید.", en: "The security session expired. Please reload the page." },
+  email_not_configured: {
+    fa: "ورود با کد ایمیلی هنوز روی این سرور فعال نشده است. لطفاً از ایمیل و رمز عبور استفاده کنید.",
+    en: "E-mail code sign-in is not configured on this server yet. Please use e-mail & password.",
+  },
+  email_login_disabled: { fa: "ورود با کد ایمیلی غیرفعال است.", en: "E-mail code sign-in is disabled." },
   session_cookie_blocked: {
     fa: "ورود انجام شد اما مرورگر این پیش‌نمایش اجازهٔ ذخیرهٔ کوکی ورود را نمی‌دهد؛ در صفحهٔ بعد از حساب خارج می‌شوید. لطفاً پیش‌نمایش را در یک تب جداگانه باز کنید یا از دامنهٔ اصلی سایت استفاده کنید.",
     en: "You signed in, but this preview browser is blocking the sign-in cookie, so you would be signed out on the next page. Please open the preview in its own tab, or use the site's real domain.",
@@ -95,6 +101,26 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
     clean.searchParams.delete("google_error");
     window.history.replaceState(null, "", clean.toString());
   }, [fa]);
+
+  /**
+   * Only open the password-less form when the server can actually deliver a
+   * message. In production with no mail provider configured, the visitor is told
+   * so here instead of typing an address that could never receive a code.
+   */
+  const openCodeMethod = useCallback(async () => {
+    setErr("");
+    try {
+      const res = await fetch("/api/auth/email/status", { ...SESSION_FETCH });
+      const data = (await res.json().catch(() => null)) as { available?: boolean; error?: string } | null;
+      if (res.ok && data && data.available === false) {
+        setErr(getError(data.error ?? "email_not_configured"));
+        return;
+      }
+    } catch {
+      // Status unreachable — let the code form try; it reports its own errors.
+    }
+    setMethod("code");
+  }, [getError]);
 
   /** Signup requires the terms checkbox — same gate as the e-mail form. */
   const allowGoogleStart = useCallback(() => {
@@ -307,10 +333,7 @@ export function AuthForm({ mode, defaultRole, onSignupSuccess, prefill, autoSubm
       {/* Password-less alternative for visitors who would rather not type a password. */}
       <button
         type="button"
-        onClick={() => {
-          setErr("");
-          setMethod("code");
-        }}
+        onClick={openCodeMethod}
         disabled={busy || autoSubmitting}
         className="auth-alt-method"
       >
