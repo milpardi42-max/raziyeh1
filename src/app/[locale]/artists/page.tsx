@@ -4,6 +4,7 @@ import { ArtistsHubView } from "@/components/artist/ArtistsHubView";
 import { artistStats, getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
@@ -13,15 +14,7 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const d = dictionaries[locale];
-  return {
-    title: `${d.nav.artists} | ${d.brand}`,
-    description:
-        locale === "fa"
-          ? "کشف طراحان آتلیه رزی؛ معرفی، نمونه‌کارها و صفحهٔ اختصاصی هر طراح."
-          : "Meet the designers of Rosie Atelier. Explore their profiles, portfolios and creative practice.",
-    alternates: { canonical: `/${locale}/artists` },
-  };
+  return getEditableRouteMetadata("/artists", locale, `${dictionaries[locale].nav.artists} | ${dictionaries[locale].brand}`);
 }
 
 export default async function ArtistsPage() {

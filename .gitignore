@@ -40,6 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /data/*.json
+/data/content.json.lock
+/data/content.json.*.tmp
 
 # marketplace runtime data: private master files, staged chunks and derivatives.
 # These are buyer/artist assets — never commit them.

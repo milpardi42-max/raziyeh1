@@ -1,11 +1,12 @@
 import "server-only";
 import type { SiteContent } from "../types";
+import { publicEducationItems } from "../academy/publication";
 import type { ProfileStat } from "../razieh-profile";
 import { getAllReservations } from "./reservations";
 
 export async function founderStatistics(site: SiteContent): Promise<ProfileStat[]> {
   const id = "artist-razieh-khairipour";
-  const courses = site.education.filter((item) => item.authorId === id);
+  const courses = publicEducationItems(site.education).filter((item) => item.authorId === id);
   const slugs = new Set(courses.map((item) => item.slug));
   const reservations = await getAllReservations();
   const students = new Set(reservations.filter((r) => r.status !== "cancelled" && slugs.has(r.eventSlug)).map((r) => r.email.trim().toLowerCase())).size;

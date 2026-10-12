@@ -32,11 +32,18 @@ function unauthorized() {
   );
 }
 
+function expectedEtag(req: NextRequest): string | undefined {
+  const value = req.headers.get("If-Match");
+  if (value === null) return undefined;
+  const tag = value.trim();
+  return tag.startsWith('"') && tag.endsWith('"') ? tag.slice(1, -1) : tag;
+}
+
 export async function GET() {
   if (!(await requireAdmin())) return unauthorized();
   const [content, etag] = await getContentWithEtag();
   const res = NextResponse.json(content, withNoStore());
-  if (etag) res.headers.set("ETag", `"${etag}"`);
+  res.headers.set("ETag", `"${etag}"`);
   return res;
 }
 
@@ -72,11 +79,17 @@ export async function PUT(req: NextRequest) {
   // Defense-in-depth sanitization — strip scripts/event handlers/JS URLs from every string field.
   const safeBody = sanitizeDeep(body) as SiteContent;
 
-  const ifMatch = req.headers.get("If-Match");
-  const expectedEtag = ifMatch ? ifMatch.replace(/^"|"$/g, "") : undefined;
+  const match = expectedEtag(req);
+  if (match === undefined) {
+    return applySecurityHeaders(
+      req,
+      NextResponse.json({ ok: false, error: "precondition_required" }, withNoStore({ status: 428 })),
+    );
+  }
 
+  let savedEtag: string;
   try {
-    await saveContent(safeBody, expectedEtag);
+    savedEtag = await saveContent(safeBody, match);
   } catch (e) {
     if (e instanceof Error && e.message === "etag_conflict") {
       return applySecurityHeaders(
@@ -90,7 +103,9 @@ export async function PUT(req: NextRequest) {
       NextResponse.json({ ok: false, error: "storage_write_failed" }, withNoStore({ status: 502 })),
     );
   }
-  return applySecurityHeaders(req, NextResponse.json({ ok: true }, withNoStore()));
+  const res = NextResponse.json({ ok: true }, withNoStore());
+  res.headers.set("ETag", `"${savedEtag}"`);
+  return applySecurityHeaders(req, res);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -102,14 +117,31 @@ export async function DELETE(req: NextRequest) {
       NextResponse.json({ ok: false, error: csrf.error }, withNoStore({ status: 403 })),
     );
   }
+  const match = expectedEtag(req);
+  if (match === undefined) {
+    return applySecurityHeaders(
+      req,
+      NextResponse.json({ ok: false, error: "precondition_required" }, withNoStore({ status: 428 })),
+    );
+  }
+
+  let resetEtag: string;
   try {
-    await resetContent();
+    resetEtag = await resetContent(match);
   } catch (e) {
+    if (e instanceof Error && e.message === "etag_conflict") {
+      return applySecurityHeaders(
+        req,
+        NextResponse.json({ ok: false, error: "etag_conflict" }, withNoStore({ status: 409 })),
+      );
+    }
     console.error("[admin/content] storage reset failed:", e);
     return applySecurityHeaders(
       req,
       NextResponse.json({ ok: false, error: "storage_reset_failed" }, withNoStore({ status: 502 })),
     );
   }
-  return applySecurityHeaders(req, NextResponse.json({ ok: true }, withNoStore()));
+  const res = NextResponse.json({ ok: true }, withNoStore());
+  res.headers.set("ETag", `"${resetEtag}"`);
+  return applySecurityHeaders(req, res);
 }

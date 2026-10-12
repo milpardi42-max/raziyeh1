@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ArtistDashboardPanel } from "@/components/artist/ArtistDashboardPanel";
+import { ArtistApprovalNotice } from "@/components/artist/ArtistApprovalNotice";
 import { AccountView } from "@/components/profile/AccountView";
+import { getArtistApprovalStatus } from "@/lib/artist/access";
 import { getSession } from "@/lib/auth";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
@@ -34,6 +36,8 @@ export default async function AccountPage({ params }: { params: Promise<{ locale
   const session = await getSession();
 
   if (session && isDesigner(session)) {
+    const approval = await getArtistApprovalStatus(session);
+    if (approval !== "approved") return <ArtistApprovalNotice locale={locale} status={approval} />;
     return <ArtistDashboardPanel locale={locale} userId={session.id} artistId={session.artistId} />;
   }
 

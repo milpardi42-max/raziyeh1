@@ -1,5 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { getSite } from "@/lib/data/queries";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { AnnouncementBar } from "./AnnouncementBar";
 import type { EducationItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/types";
@@ -38,7 +39,7 @@ export async function AnnouncementBarServer({ locale }: { locale: Locale }) {
   noStore();
 
   const site = await getSite();
-  const event = pickEvent(site.education);
+  const event = pickEvent(publicEducationItems(site.education));
 
   const topBanners = site.banners.filter((banner) => banner.enabled && banner.placement === "top");
 

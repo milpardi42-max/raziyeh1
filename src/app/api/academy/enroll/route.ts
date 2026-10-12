@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withNoStore } from "@/lib/http";
 import { getSession } from "@/lib/auth";
 import { effectiveLiveStatus, isFreePrice } from "@/lib/academy-live";
+import { isPublishedEducation } from "@/lib/academy/publication";
 import { getContent } from "@/lib/data/store";
 import { createReservation } from "@/lib/data/reservations";
 import { clientIp, recordAttempt, retryAfterSeconds, tooManyAttempts } from "@/lib/rate-limit";
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   }
 
   const site = await getContent();
-  const item = site.education.find((entry) => entry.slug === slug);
+  const item = site.education.find((entry) => entry.slug === slug && isPublishedEducation(entry));
   if (!item) {
     return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
   }

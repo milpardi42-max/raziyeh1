@@ -22,12 +22,12 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { cn, href, t } from "@/lib/utils";
+import { cn, href, slugify, t } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import { MediaUploadControl } from "@/components/admin/MediaUploadControl";
 import { getPortfolioCategories } from "@/lib/portfolio-categories";
-import type { Artist, Category, DraftStatus, Portfolio, SiteContent } from "@/lib/types";
+import type { Artist, Category, DraftStatus, Pattern, Portfolio, PortfolioBlock, Product, SiteContent } from "@/lib/types";
 import type { Locale, Localized } from "@/lib/i18n/types";
 
 /* ──────────────────────────────────────────────────────────────
@@ -71,6 +71,49 @@ function makeSlug(title: string) {
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-")
     .slice(0, 60);
+}
+
+function localized(value?: Localized): Localized {
+  return { fa: value?.fa ?? "", en: value?.en ?? "" };
+}
+
+function newPortfolioDraft(categoryId: string): Portfolio {
+  return {
+    id: makeId(), slug: "", title: localized(), subtitle: localized(), intro: localized(), story: [],
+    cover: "", gallery: [], artistId: null, patternIds: [], productIds: [],
+    client: localized(), location: localized(), year: new Date().getFullYear(), scope: localized(),
+    categoryId, featured: false, isProject: false, size: "square", draftStatus: "draft",
+  };
+}
+
+function normalizePortfolio(portfolio: Portfolio): Portfolio {
+  return {
+    ...portfolio,
+    slug: portfolio.slug ?? "",
+    title: localized(portfolio.title),
+    subtitle: localized(portfolio.subtitle),
+    intro: localized(portfolio.intro),
+    story: Array.isArray(portfolio.story) ? portfolio.story.map((block) => ({
+      ...block,
+      ...(block.text ? { text: localized(block.text) } : {}),
+      ...(block.caption ? { caption: localized(block.caption) } : {}),
+      images: block.images ? [...block.images] : undefined,
+    })) : [],
+    cover: portfolio.cover ?? "",
+    gallery: [...(portfolio.gallery ?? [])],
+    artistId: portfolio.artistId ?? null,
+    patternIds: [...(portfolio.patternIds ?? [])],
+    productIds: [...(portfolio.productIds ?? [])],
+    client: localized(portfolio.client),
+    location: localized(portfolio.location),
+    year: Number.isInteger(portfolio.year) ? portfolio.year : new Date().getFullYear(),
+    scope: localized(portfolio.scope),
+    categoryId: portfolio.categoryId ?? "",
+    featured: Boolean(portfolio.featured),
+    isProject: Boolean(portfolio.isProject),
+    size: portfolio.size ?? "square",
+    draftStatus: portfolio.draftStatus ?? "published",
+  };
 }
 
 function LocalizedField({
@@ -118,6 +161,9 @@ function PortfolioEditDrawer({
   portfolio,
   artists,
   categories,
+  patterns,
+  products,
+  portfolios,
   locale,
   onSave,
   onClose,
@@ -125,34 +171,16 @@ function PortfolioEditDrawer({
   portfolio: Portfolio | null;
   artists: Artist[];
   categories: Category[];
+  patterns: Pattern[];
+  products: Product[];
+  portfolios: Portfolio[];
   locale: Locale;
   onSave: (p: Portfolio) => void;
   onClose: () => void;
 }) {
   const isNew = portfolio === null;
-  const [form, setForm] = useState<Portfolio>(
-    portfolio ?? {
-      id: makeId(),
-      slug: "",
-      title: { fa: "", en: "" },
-      subtitle: { fa: "", en: "" },
-      intro: { fa: "", en: "" },
-      story: [],
-      cover: "",
-      gallery: [],
-      artistId: null,
-      patternIds: [],
-      productIds: [],
-      client: { fa: "", en: "" },
-      location: { fa: "", en: "" },
-      year: new Date().getFullYear(),
-      scope: { fa: "", en: "" },
-      categoryId: categories[0]?.id ?? "",
-      featured: false,
-      isProject: false,
-      size: "square",
-      draftStatus: "draft",
-    },
+  const [form, setForm] = useState<Portfolio>(() =>
+    portfolio ? normalizePortfolio(portfolio) : newPortfolioDraft(categories[0]?.id ?? ""),
   );
 
   const set = useCallback(<K extends keyof Portfolio>(key: K, val: Portfolio[K]) => {
@@ -164,6 +192,78 @@ function PortfolioEditDrawer({
   };
 
   const [galleryInput, setGalleryInput] = useState(form.gallery.join("\n"));
+  const [validationError, setValidationError] = useState("");
+
+  const updateStoryBlock = (index: number, patch: Partial<PortfolioBlock>) => {
+    set("story", form.story.map((block, blockIndex) => blockIndex === index ? { ...block, ...patch } : block));
+  };
+  const addStoryBlock = (type: PortfolioBlock["type"]) => {
+    const block: PortfolioBlock = type === "image"
+      ? { type, image: "", caption: { fa: "", en: "" } }
+      : type === "pair"
+      ? { type, images: ["", ""], caption: { fa: "", en: "" } }
+      : { type, text: { fa: "", en: "" } };
+    set("story", [...form.story, block]);
+  };
+  const save = () => {
+    setValidationError("");
+    const titleFa = form.title.fa.trim();
+    const slug = slugify(form.slug.trim() || form.title.en || titleFa);
+    if (!titleFa || !slug) {
+      setValidationError("عنوان فارسی و اسلاگ معتبر را وارد کنید.");
+      return;
+    }
+    if (portfolios.some((item) => item.id !== form.id && slugify(item.slug) === slug)) {
+      setValidationError("این اسلاگ قبلاً برای پورتفولیوی دیگری استفاده شده است.");
+      return;
+    }
+    if (!form.cover.trim()) {
+      setValidationError("تصویر کاور را وارد یا آپلود کنید.");
+      return;
+    }
+    if (!Number.isInteger(Number(form.year)) || Number(form.year) < 1800 || Number(form.year) > 2200) {
+      setValidationError("سال پروژه باید عددی معتبر باشد.");
+      return;
+    }
+    if (form.artistId && !artists.some((artist) => artist.id === form.artistId)) {
+      setValidationError("هنرمند انتخاب‌شده در سایت موجود نیست.");
+      return;
+    }
+    if (form.categoryId && !categories.some((category) => category.id === form.categoryId)) {
+      setValidationError("دسته‌بندی انتخاب‌شده در سایت موجود نیست.");
+      return;
+    }
+    if (form.patternIds.some((id) => !patterns.some((pattern) => pattern.id === id)) || form.productIds.some((id) => !products.some((product) => product.id === id))) {
+      setValidationError("یک یا چند ارجاع پترن/محصول قدیمی است؛ آن را از ارتباط‌ها حذف یا با رکورد معتبر جایگزین کنید.");
+      return;
+    }
+    const invalidBlock = form.story.some((block) =>
+      (block.type === "text" || block.type === "quote") ? !block.text?.fa.trim() && !block.text?.en.trim()
+        : block.type === "image" ? !block.image?.trim()
+        : !block.images?.[0]?.trim() || !block.images?.[1]?.trim(),
+    );
+    if (invalidBlock) {
+      setValidationError("هر بلوک داستان باید متن داشته باشد یا تصاویر لازم آن کامل شود؛ بلوک خالی را حذف کنید.");
+      return;
+    }
+    onSave({
+      ...form,
+      slug,
+      title: { fa: titleFa, en: form.title.en.trim() || titleFa },
+      cover: form.cover.trim(),
+      year: Number(form.year),
+      gallery: galleryInput.split("\n").map((item) => item.trim()).filter(Boolean),
+      patternIds: [...new Set(form.patternIds)],
+      productIds: [...new Set(form.productIds)],
+      story: form.story.map((block) => ({
+        ...block,
+        ...(block.text ? { text: { fa: block.text.fa.trim(), en: block.text.en.trim() || block.text.fa.trim() } } : {}),
+        ...(block.caption ? { caption: { fa: block.caption.fa.trim(), en: block.caption.en.trim() || block.caption.fa.trim() } } : {}),
+        ...(block.image ? { image: block.image.trim() } : {}),
+        ...(block.images ? { images: block.images.map((image) => image.trim()) } : {}),
+      })),
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
@@ -241,6 +341,7 @@ function PortfolioEditDrawer({
                 پروژه
               </label>
             </div>
+            {form.draftStatus === "rejected" && <Field label="دلیل رد (اختیاری)"><Textarea value={form.rejectionNote ?? ""} onChange={(event) => set("rejectionNote", event.target.value)} /></Field>}
           </div>
 
           {/* Title & Slug */}
@@ -275,6 +376,22 @@ function PortfolioEditDrawer({
             <LocalizedField label="متن معرفی" value={form.intro} onChange={(v) => set("intro", v)} textarea />
           </div>
 
+          {/* Story blocks */}
+          <section className="space-y-3 border-t border-border pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-foreground">روایت پروژه</h3><p className="mt-0.5 text-xs text-muted">بلوک‌های متنی، نقل‌قول و تصویر در صفحهٔ عمومی با همین ترتیب نمایش داده می‌شوند.</p></div><div className="flex flex-wrap gap-1.5">{([
+              ["text", "متن"], ["image", "تصویر"], ["quote", "نقل‌قول"], ["pair", "دو تصویر"],
+            ] as [PortfolioBlock["type"], string][]).map(([type, label]) => <Button key={type} type="button" size="sm" variant="outline" onClick={() => addStoryBlock(type)}><Plus className="h-3.5 w-3.5" />{label}</Button>)}</div></div>
+            {form.story.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-xs text-muted">هنوز بلوکی برای روایت ثبت نشده است.</p>}
+            {form.story.map((block, index) => (
+              <div key={`${index}-${block.type}`} className="space-y-3 rounded-xl border border-border bg-background-secondary/40 p-3">
+                <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="text-xs font-semibold">بلوک {index + 1}</span><Select value={block.type} onChange={(event) => { const nextType = event.target.value as PortfolioBlock["type"]; const nextBlock: PortfolioBlock = nextType === "image" ? { type: nextType, image: "", caption: { fa: "", en: "" } } : nextType === "pair" ? { type: nextType, images: ["", ""], caption: { fa: "", en: "" } } : { type: nextType, text: { fa: "", en: "" } }; set("story", form.story.map((item, itemIndex) => itemIndex === index ? nextBlock : item)); }}>{([["text", "متن"], ["image", "تصویر"], ["quote", "نقل‌قول"], ["pair", "دو تصویر"]] as [PortfolioBlock["type"], string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div><button type="button" onClick={() => set("story", form.story.filter((_, itemIndex) => itemIndex !== index))} aria-label={`حذف بلوک ${index + 1}`} className="rounded p-1.5 text-muted hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
+                {(block.type === "text" || block.type === "quote") && <LocalizedField label={block.type === "quote" ? "متن نقل‌قول" : "متن"} value={block.text ?? { fa: "", en: "" }} onChange={(text) => updateStoryBlock(index, { text })} textarea />}
+                {block.type === "image" && <><Field label="آدرس تصویر"><Input dir="ltr" value={block.image ?? ""} onChange={(event) => updateStoryBlock(index, { image: event.target.value })} /></Field><MediaUploadControl mediaType="image" locale={locale} onUploaded={(image) => updateStoryBlock(index, { image })} /><LocalizedField label="زیرنویس" value={block.caption ?? { fa: "", en: "" }} onChange={(caption) => updateStoryBlock(index, { caption })} /></>}
+                {block.type === "pair" && <><div className="grid gap-4 sm:grid-cols-2">{[0, 1].map((imageIndex) => { const images = [block.images?.[0] ?? "", block.images?.[1] ?? ""]; return <div key={imageIndex} className="space-y-2"><Field label={`تصویر ${imageIndex + 1}`}><Input dir="ltr" value={images[imageIndex]} onChange={(event) => { const nextImages = [...images]; nextImages[imageIndex] = event.target.value; updateStoryBlock(index, { images: nextImages }); }} /></Field><MediaUploadControl mediaType="image" locale={locale} onUploaded={(image) => { const nextImages = [...images]; nextImages[imageIndex] = image; updateStoryBlock(index, { images: nextImages }); }} /></div>; })}</div><LocalizedField label="زیرنویس مشترک" value={block.caption ?? { fa: "", en: "" }} onChange={(caption) => updateStoryBlock(index, { caption })} /></>}
+              </div>
+            ))}
+          </section>
+
           {/* Cover & Gallery */}
           <div>
             <h3 className="mb-3 text-sm font-semibold text-foreground">تصاویر</h3>
@@ -286,6 +403,7 @@ function PortfolioEditDrawer({
                 onChange={(e) => set("cover", e.target.value)}
               />
             </Field>
+            <MediaUploadControl mediaType="image" locale={locale} onUploaded={(cover) => set("cover", cover)} />
             {form.cover && (
               <div className="mt-2 mb-3 overflow-hidden rounded-lg bg-background-secondary">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -309,6 +427,7 @@ function PortfolioEditDrawer({
                 }}
               />
             </Field>
+            <div className="mt-2"><MediaUploadControl mediaType="image" locale={locale} onUploaded={(image) => { const next = [...galleryInput.split("\n").map((item) => item.trim()).filter(Boolean), image]; setGalleryInput(next.join("\n")); set("gallery", next); }} /></div>
           </div>
 
           {/* Meta: Client, Location, Scope */}
@@ -347,6 +466,16 @@ function PortfolioEditDrawer({
               </Field>
             </div>
           </div>
+
+          {/* Related records */}
+          <section className="space-y-3 border-t border-border pt-5">
+            <div><h3 className="text-sm font-semibold text-foreground">ارجاع‌های کاتالوگ</h3><p className="mt-0.5 text-xs text-muted">پترن‌ها و محصولات انتخاب‌شده در صفحهٔ عمومی این پروژه نمایش داده می‌شوند.</p></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><p className="mb-1.5 text-xs font-semibold">پترن‌های مرتبط</p><div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{patterns.map((pattern) => <label key={pattern.id} className="flex items-center gap-2 rounded px-1.5 py-1.5 text-xs hover:bg-background-secondary"><input type="checkbox" checked={form.patternIds.includes(pattern.id)} onChange={() => { const next = new Set(form.patternIds); if (next.has(pattern.id)) next.delete(pattern.id); else next.add(pattern.id); set("patternIds", [...next]); }} className="accent-accent" /><span className="min-w-0 flex-1 truncate">{t(pattern.title, locale)}</span><code dir="ltr" className="text-[10px] text-muted">{pattern.sku}</code></label>)}{patterns.length === 0 && <p className="p-2 text-xs text-muted">پترنی موجود نیست.</p>}</div>{form.patternIds.filter((id) => !patterns.some((pattern) => pattern.id === id)).map((id) => <div key={id} className="mt-1 flex items-center justify-between gap-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800"><span>پترن حذف‌شده: <code dir="ltr">{id}</code></span><button type="button" onClick={() => set("patternIds", form.patternIds.filter((item) => item !== id))} className="font-semibold hover:underline">حذف ارجاع</button></div>)}</div>
+              <div><p className="mb-1.5 text-xs font-semibold">محصولات مرتبط</p><div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{products.map((product) => <label key={product.id} className="flex items-center gap-2 rounded px-1.5 py-1.5 text-xs hover:bg-background-secondary"><input type="checkbox" checked={form.productIds.includes(product.id)} onChange={() => { const next = new Set(form.productIds); if (next.has(product.id)) next.delete(product.id); else next.add(product.id); set("productIds", [...next]); }} className="accent-accent" /><span className="min-w-0 flex-1 truncate">{t(product.title, locale)}</span><code dir="ltr" className="text-[10px] text-muted">{product.sku}</code></label>)}{products.length === 0 && <p className="p-2 text-xs text-muted">محصولی موجود نیست.</p>}</div>{form.productIds.filter((id) => !products.some((product) => product.id === id)).map((id) => <div key={id} className="mt-1 flex items-center justify-between gap-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800"><span>محصول حذف‌شده: <code dir="ltr">{id}</code></span><button type="button" onClick={() => set("productIds", form.productIds.filter((item) => item !== id))} className="font-semibold hover:underline">حذف ارجاع</button></div>)}</div>
+            </div>
+          </section>
+          {validationError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{validationError}</p>}
         </div>
 
         {/* Footer actions */}
@@ -367,8 +496,7 @@ function PortfolioEditDrawer({
             )}
             <Button
               size="sm"
-              onClick={() => onSave(form)}
-              disabled={!form.title.fa || !form.slug}
+              onClick={save}
             >
               {isNew ? "ایجاد پورتفولیو" : "ذخیره تغییرات"}
             </Button>
@@ -1040,6 +1168,9 @@ export function PortfoliosManager({
           portfolio={editTarget === "new" ? null : editTarget}
           artists={artists}
           categories={categories}
+          patterns={data.patterns}
+          products={data.products}
+          portfolios={portfolios}
           locale={locale}
           onSave={savePortfolio}
           onClose={() => setEditTarget(null)}

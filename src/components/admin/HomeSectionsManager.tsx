@@ -36,6 +36,9 @@ import {
 } from "lucide-react";
 import { cn, slugify, t } from "@/lib/utils";
 import { MediaUploadControl } from "@/components/admin/MediaUploadControl";
+import { FirstProductVariantFields, EMPTY_FIRST_PRODUCT_VARIANT, type FirstProductVariantFormValues } from "@/components/admin/FirstProductVariantFields";
+import { buildProductWithFirstVariant, getProductColor, type FirstProductVariantError } from "@/lib/product-variants";
+import { getCategoryUsageCounts, hasCategoryReferences } from "@/lib/category-references";
 import type {
   Artist,
   Category,
@@ -83,10 +86,10 @@ const SECTION_META: Record<HomeSectionKey, { label: string; icon: React.ReactNod
   exclusive:   { label: "کالکشن اختصاصی",      icon: <ShoppingBag className="h-4 w-4" />,         desc: "محصولات بدون artistId (site-owned)" },
   projects:    { label: "پروژه‌های منتخب",      icon: <GalleryHorizontalEnd className="h-4 w-4" />, desc: "پورتفولیوهایی با isProject=true" },
   education:   { label: "آکادمی",               icon: <BookOpen className="h-4 w-4" />,            desc: "دوره‌ها و آموزش‌های featured" },
-  b2b:         { label: "پروژه‌های سازمانی",   icon: <Package className="h-4 w-4" />,             desc: "بنر ثابت B2B" },
-  custom:      { label: "تولید سفارشی",         icon: <Package className="h-4 w-4" />,             desc: "بنر ثابت سفارش اختصاصی" },
+  b2b:         { label: "پروژه‌های سازمانی",   icon: <Package className="h-4 w-4" />,             desc: "متن از دیکشنری؛ فرم /projects درخواست را ذخیره یا ایمیل نمی‌کند" },
+  custom:      { label: "تولید سفارشی",         icon: <Package className="h-4 w-4" />,             desc: "متن از دیکشنری؛ فرم /custom درخواست را ذخیره یا ایمیل نمی‌کند" },
   stories:     { label: "روایت هنرمندان",       icon: <BookOpen className="h-4 w-4" />,            desc: "مقالات و داستان‌های هنرمندان" },
-  newsletter:  { label: "خبرنامه",              icon: <Sparkles className="h-4 w-4" />,            desc: "فرم عضویت در خبرنامه" },
+  newsletter:  { label: "خبرنامه",              icon: <Sparkles className="h-4 w-4" />,            desc: "متن ثابت از دیکشنری؛ فرم ایمیل هنوز به سامانهٔ خبرنامه متصل نیست" },
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -1026,7 +1029,7 @@ function newProduct(data: SiteContent): Product {
 }
 
 function ProductCard({ product: p, onEdit, onDelete }: { product: Product; onEdit: () => void; onDelete: () => void }) {
-  const img = p.colors[0]?.image ?? "/images/patterns/p01.jpg";
+  const img = getProductColor(p).image;
   const hasDis = p.compareAt && p.compareAt.fa > p.price.fa;
   const dp = hasDis ? pct(p.price.fa, p.compareAt!.fa) : 0;
   return (
@@ -1064,7 +1067,28 @@ function ProductCard({ product: p, onEdit, onDelete }: { product: Product; onEdi
 
 function ProductEditModal({ product, data, onSave, onClose, isNew }: { product: Product; data: SiteContent; onSave: (p: Product) => void; onClose: () => void; isNew?: boolean }) {
   const [p, setP] = useState<Product>({ ...product });
+  const [firstVariant, setFirstVariant] = useState<FirstProductVariantFormValues>({ ...EMPTY_FIRST_PRODUCT_VARIANT });
+  const [variantError, setVariantError] = useState<FirstProductVariantError | null>(null);
   const set = (patch: Partial<Product>) => setP(prev => ({ ...prev, ...patch }));
+  const handleSave = () => {
+    if (!isNew) {
+      onSave(p);
+      return;
+    }
+    const result = buildProductWithFirstVariant(p, {
+      id: uid(),
+      nameFa: firstVariant.nameFa,
+      nameEn: firstVariant.nameEn,
+      hex: firstVariant.hex,
+      image: firstVariant.image,
+      stock: firstVariant.stock,
+    });
+    if (!result.ok) {
+      setVariantError(result.error);
+      return;
+    }
+    onSave(result.product);
+  };
   return (
     <Modal title={isNew ? "افزودن محصول جدید" : `ویرایش: ${t(p.title, "fa")}`} onClose={onClose}>
       <div className="space-y-4">
@@ -1085,6 +1109,16 @@ function ProductEditModal({ product, data, onSave, onClose, isNew }: { product: 
           </FRow>
           <FRow label="متریال (فارسی)"><FInput value={p.materials.fa} onChange={v => set({ materials: { ...p.materials, fa: v } })} /></FRow>
         </div>
+        {isNew && (
+          <FirstProductVariantFields
+            value={firstVariant}
+            onChange={(patch) => {
+              setFirstVariant((current) => ({ ...current, ...patch }));
+              setVariantError(null);
+            }}
+            error={variantError}
+          />
+        )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <FCheck label="منتخب" checked={p.featured} onChange={v => set({ featured: v })} />
           <FCheck label="پرفروش" checked={p.bestSeller} onChange={v => set({ bestSeller: v })} />
@@ -1092,7 +1126,7 @@ function ProductEditModal({ product, data, onSave, onClose, isNew }: { product: 
         </div>
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <CancelBtn onClick={onClose} />
-          <SaveBtn onClick={() => onSave(p)} label={isNew ? "افزودن" : "ذخیره"} />
+          <SaveBtn onClick={handleSave} label={isNew ? "افزودن" : "ذخیره"} />
         </div>
       </div>
     </Modal>
@@ -1317,6 +1351,25 @@ function StylesEditor({ data, update }: { data: SiteContent; update: (p: Partial
   const [showAdd, setShowAdd] = useState(false);
   const cats = data.categories.slice().sort((a, b) => a.order - b.order);
   const setCats = (categories: Category[]) => update({ categories });
+  const removeCategory = (category: Category) => {
+    const usage = getCategoryUsageCounts(data, category.id);
+    if (hasCategoryReferences(usage)) {
+      const references = [
+        [usage.patterns, "پترن"],
+        [usage.products, "محصول"],
+        [usage.education, "محتوای آکادمی"],
+        [usage.portfolios, "پورتفولیو"],
+      ]
+        .filter(([count]) => Number(count) > 0)
+        .map(([count, label]) => `${count} ${label}`)
+        .join("، ");
+      alert(`این سبک به ${references} ارجاع دارد و قابل حذف نیست. ابتدا رکوردها را به دستهٔ دیگری منتقل کنید.`);
+      return;
+    }
+    if (confirm(`سبک «${category.name.fa}» حذف شود؟`)) {
+      setCats(data.categories.filter((item) => item.id !== category.id));
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -1326,7 +1379,7 @@ function StylesEditor({ data, update }: { data: SiteContent; update: (p: Partial
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cats.map(c => {
-          const patCount = data.patterns.filter(p => p.categoryId === c.id).length;
+          const usage = getCategoryUsageCounts(data, c.id);
           return (
             <div key={c.id} className="group overflow-hidden rounded-xl border border-border bg-white shadow-soft">
               <div className="relative aspect-video overflow-hidden">
@@ -1335,14 +1388,16 @@ function StylesEditor({ data, update }: { data: SiteContent; update: (p: Partial
                 <p className="absolute bottom-2 right-3 text-sm font-bold text-white">{t(c.name, "fa")}</p>
                 <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
                   <button onClick={() => setEditTarget(c)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-foreground hover:bg-accent hover:text-white"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button onClick={() => { if (patCount > 0) { alert("این سبک در پترن‌ها استفاده می‌شود."); return; } if (confirm("حذف شود؟")) setCats(data.categories.filter(x => x.id !== c.id)); }}
+                  <button type="button" onClick={() => removeCategory(c)} aria-label={`حذف سبک ${t(c.name, "fa")}`}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-error hover:bg-error hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
               <div className="px-3 py-2.5">
                 <p className="line-clamp-1 text-xs text-muted">{t(c.description, "fa")}</p>
                 <div className="mt-1.5 flex items-center justify-between">
-                  <span className="text-[10px] text-muted">{patCount} پترن</span>
+                  <span className="text-[10px] text-muted" title={`${usage.education} آکادمی · ${usage.portfolios} پورتفولیو`}>
+                    {usage.patterns} پترن · {usage.products} محصول
+                  </span>
                   <div className="flex gap-1">
                     <button onClick={() => setCats(data.categories.map(x => x.id === c.id ? { ...x, featured: !x.featured } : x))}
                       className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", c.featured ? "border-accent bg-accent/10 text-accent" : "border-border text-muted")}>
@@ -1629,9 +1684,18 @@ function StoryEditModal({ story, data, onSave, onClose, isNew }: { story: Story;
    ══════════════════════════════════════════════════════════ */
 function StaticBannerInfo({ sectionKey }: { sectionKey: HomeSectionKey }) {
   const map: Record<string, { title: string; desc: string }> = {
-    b2b:        { title: "بنر پروژه‌های سازمانی", desc: "این یک بنر ثابت است. برای ویرایش متن، به تب «بنرها» بروید." },
-    custom:     { title: "بنر تولید سفارشی",     desc: "این یک بنر ثابت است. برای ویرایش متن، به تب «بنرها» بروید." },
-    newsletter: { title: "فرم خبرنامه",           desc: "این بخش یک فرم ثابت است و محتوای قابل ویرایش در پنل ندارد." },
+    b2b: {
+      title: "بخش پروژه‌های سازمانی (ثابت)",
+      desc: "عنوان، توضیح و CTA از دیکشنری دوزبانهٔ سایت می‌آیند و در تب «بنرها» قابل تغییر نیستند. تصویر صفحهٔ خانه جلد اولین پورتفولیو و در نبود آن تصویر هیرو است؛ CTA به /projects می‌رود. آن صفحه فرم دارد، اما /api/contact فعلاً فقط شناسهٔ پیگیری برمی‌گرداند و درخواست را ذخیره یا ایمیل نمی‌کند. اینجا فقط نمایش و ترتیب بخش را کنترل می‌کنید.",
+    },
+    custom: {
+      title: "بخش تولید سفارشی (ثابت)",
+      desc: "عنوان، توضیح و CTA از دیکشنری دوزبانهٔ سایت می‌آیند و در تب «بنرها» قابل تغییر نیستند. تصویر صفحهٔ خانه جلد چهارمین پورتفولیو و در نبود آن تصویر هیرو است؛ CTA به /custom می‌رود. صفحهٔ مقصد فرم دارد، اما /api/contact فعلاً فقط شناسهٔ پیگیری برمی‌گرداند و درخواست را ذخیره یا ایمیل نمی‌کند. اینجا فقط نمایش و ترتیب بخش را کنترل می‌کنید.",
+    },
+    newsletter: {
+      title: "فرم خبرنامه (اتصال ثبت‌نام تنظیم نشده)",
+      desc: "عنوان، توضیح و CTA از دیکشنری دوزبانهٔ سایت می‌آیند. فرم فعلی ایمیل را اعتبارسنجی می‌کند و به /api/newsletter می‌فرستد، اما این API هنوز فقط پاسخ آزمایشی موفق می‌دهد و ایمیل را در فهرست یا سامانهٔ ایمیلی ذخیره نمی‌کند. پنل هم فهرست مشترکان یا تنظیمات سرویس ایمیل ندارد؛ این کارت فقط نمایش و ترتیب بخش را کنترل می‌کند.",
+    },
   };
   const info = map[sectionKey]!;
   return (

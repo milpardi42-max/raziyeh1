@@ -12,6 +12,7 @@ import {
   Grid3X3,
   LayoutList,
   Package,
+  Pencil,
   Plus,
   Search,
   ShoppingBag,
@@ -24,6 +25,10 @@ import {
 import { cn, href, t } from "@/lib/utils";
 import type { Product, Category, SiteContent } from "@/lib/types";
 import { PRODUCT_FAMILIES } from "@/lib/data/families";
+import { FirstProductVariantFields, EMPTY_FIRST_PRODUCT_VARIANT, type FirstProductVariantFormValues } from "@/components/admin/FirstProductVariantFields";
+import { buildProductWithFirstVariant, type FirstProductVariantError } from "@/lib/product-variants";
+import { ProductEditor } from "@/components/admin/ProductEditor";
+import { getProductReferenceCounts, hasCatalogReferences } from "@/lib/catalog-references";
 
 /* ─── helpers ─── */
 function farsiNum(n: number) {
@@ -58,12 +63,14 @@ function ProductRow({
   category,
   viewHref,
   onChange,
+  onEdit,
   onDelete,
 }: {
   product: Product;
   category: Category | null;
   viewHref: string;
   onChange: (updated: Product) => void;
+  onEdit: () => void;
   onDelete: (id: string) => void;
 }) {
   const toggle = (f: FlagKey) => onChange({ ...product, [f]: !product[f] });
@@ -149,6 +156,9 @@ function ProductRow({
         >
           <Eye className="h-4 w-4" />
         </Link>
+        <button type="button" onClick={onEdit} aria-label={`ویرایش ${t(product.title, "fa")}`} title="ویرایش محصول" className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-background-secondary hover:text-foreground transition-colors">
+          <Pencil className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -171,12 +181,14 @@ function ProductGridCard({
   category,
   viewHref,
   onChange,
+  onEdit,
   onDelete,
 }: {
   product: Product;
   category: Category | null;
   viewHref: string;
   onChange: (updated: Product) => void;
+  onEdit: () => void;
   onDelete: (id: string) => void;
 }) {
   const toggle = (f: FlagKey) => onChange({ ...product, [f]: !product[f] });
@@ -189,7 +201,7 @@ function ProductGridCard({
         <Package className="h-12 w-12 text-border" />
         {/* badges */}
         {activeFlags.length > 0 && (
-          <div className="absolute inset-x-2 top-2 flex flex-wrap gap-1">
+          <div className="absolute inset-x-2 top-11 flex flex-wrap gap-1">
             {activeFlags.map((f) => {
               const m = FLAG_META[f];
               return (
@@ -207,7 +219,10 @@ function ProductGridCard({
             })}
           </div>
         )}
-        {/* دکمه حذف */}
+        {/* عملیات ویرایش / حذف */}
+        <button type="button" onClick={onEdit} aria-label={`ویرایش ${t(product.title, "fa")}`} title="ویرایش محصول" className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-foreground shadow-sm hover:bg-white">
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -337,11 +352,13 @@ function AddProductModal({
   const [familyId, setFamilyId] = useState("");
   const [priceFa, setPriceFa] = useState("");
   const [priceEn, setPriceEn] = useState("");
+  const [firstVariant, setFirstVariant] = useState<FirstProductVariantFormValues>({ ...EMPTY_FIRST_PRODUCT_VARIANT });
+  const [variantError, setVariantError] = useState<FirstProductVariantError | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!titleFa.trim() || !sku.trim()) return;
-    const newProduct: Product = {
+    const productBase: Omit<Product, "colors"> = {
       id: `prod-${Date.now().toString(36)}`,
       sku: sku.trim(),
       slug: sku.trim().toLowerCase().replace(/\s+/g, "-"),
@@ -352,7 +369,6 @@ function AddProductModal({
       patternId: null,
       artistId: null,
       price: { fa: parseInt(priceFa) || 0, en: parseInt(priceEn) || 0 },
-      colors: [],
       sizes: [],
       specs: [],
       materials: { fa: "", en: "" },
@@ -361,14 +377,26 @@ function AddProductModal({
       isNew: true,
       order: 999,
     };
-    onAdd(newProduct);
+    const result = buildProductWithFirstVariant(productBase, {
+      id: `color-${Date.now().toString(36)}`,
+      nameFa: firstVariant.nameFa,
+      nameEn: firstVariant.nameEn,
+      hex: firstVariant.hex,
+      image: firstVariant.image,
+      stock: firstVariant.stock,
+    });
+    if (!result.ok) {
+      setVariantError(result.error);
+      return;
+    }
+    onAdd(result.product);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -458,7 +486,16 @@ function AddProductModal({
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-[11px] leading-5 text-muted">فهرست خانواده‌ها در کد سایت تعریف شده و از پنل قابل افزودن یا حذف نیست.</p>
           </div>
+          <FirstProductVariantFields
+            value={firstVariant}
+            onChange={(patch) => {
+              setFirstVariant((current) => ({ ...current, ...patch }));
+              setVariantError(null);
+            }}
+            error={variantError}
+          />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-foreground-secondary">
@@ -517,6 +554,7 @@ function CategorySection({
   categoryMap,
   viewHrefFn,
   onProductChange,
+  onProductEdit,
   onProductDelete,
   viewMode,
 }: {
@@ -525,6 +563,7 @@ function CategorySection({
   categoryMap: Record<string, Category>;
   viewHrefFn: (p: Product) => string;
   onProductChange: (updated: Product) => void;
+  onProductEdit: (product: Product) => void;
   onProductDelete: (id: string) => void;
   viewMode: "grid" | "list";
 }) {
@@ -563,6 +602,7 @@ function CategorySection({
                   category={categoryMap[p.categoryId] ?? null}
                   viewHref={viewHrefFn(p)}
                   onChange={onProductChange}
+                  onEdit={() => onProductEdit(p)}
                   onDelete={onProductDelete}
                 />
               ))}
@@ -576,6 +616,7 @@ function CategorySection({
                   category={categoryMap[p.categoryId] ?? null}
                   viewHref={viewHrefFn(p)}
                   onChange={onProductChange}
+                  onEdit={() => onProductEdit(p)}
                   onDelete={onProductDelete}
                 />
               ))}
@@ -604,6 +645,7 @@ export function ProductsManager({
   const [sortKey, setSortKey] = useState<"order" | "name" | "price">("order");
   const [sortAsc, setSortAsc] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<Product | null>(null);
   const [groupByCategory, setGroupByCategory] = useState(true);
 
   const categoryMap = useMemo(
@@ -667,7 +709,24 @@ export function ProductsManager({
   };
 
   const onProductDelete = (id: string) => {
-    update({ products: data.products.filter((p) => p.id !== id) });
+    const product = data.products.find((item) => item.id === id);
+    if (!product) return;
+    const references = getProductReferenceCounts(data, id);
+    if (hasCatalogReferences(references)) {
+      const details = [
+        [references.collections, "مجموعه"],
+        [references.portfolios, "پورتفولیو"],
+        [references.education, "محتوای آکادمی"],
+      ].filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`).join("، ");
+      alert(`این محصول در ${details} استفاده شده است؛ ابتدا ارتباط‌ها را اصلاح کنید.`);
+      return;
+    }
+    update({ products: data.products.filter((item) => item.id !== id) });
+  };
+
+  const onProductSave = (updated: Product) => {
+    update({ products: data.products.map((item) => item.id === updated.id ? updated : item) });
+    setEditTarget(null);
   };
 
   const onProductAdd = (product: Product) => {
@@ -698,6 +757,8 @@ export function ProductsManager({
 
   return (
     <div className="space-y-5">
+      {editTarget && <ProductEditor product={editTarget} products={data.products} categories={data.categories} patterns={data.patterns} artists={data.artists} locale={locale} onSave={onProductSave} onClose={() => setEditTarget(null)} />}
+
       {/* مودال افزودن */}
       {showAdd && (
         <AddProductModal
@@ -716,7 +777,7 @@ export function ProductsManager({
             </span>
             محصولات
           </h1>
-          <p className="mt-1 text-sm text-muted">مدیریت کامل محصولات فروشگاه — افزودن، حذف و کنترل پرچم‌ها</p>
+          <p className="mt-1 text-sm text-muted">مدیریت محصولات، قیمت، واریانت‌ها، موجودی، مشخصات و ارتباط‌ها</p>
         </div>
         <button
           type="button"
@@ -903,6 +964,7 @@ export function ProductsManager({
               categoryMap={categoryMap}
               viewHrefFn={(p) => href(locale, `/shop/${p.slug}`)}
               onProductChange={onProductChange}
+              onProductEdit={setEditTarget}
               onProductDelete={onProductDelete}
               viewMode={viewMode}
             />

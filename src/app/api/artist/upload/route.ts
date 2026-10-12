@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminSession, getSession } from "@/lib/auth";
+import { requireArtistOrAdmin as requireApprovedArtistOrAdmin } from "@/lib/marketplace/guard";
 import { withNoStore } from "@/lib/http";
 import { clientIp, tooManyAttempts, recordAttempt, retryAfterSeconds } from "@/lib/rate-limit";
 import { storePublicMedia } from "@/lib/media-storage";
@@ -9,14 +9,10 @@ export const runtime = "nodejs";
 const MAX_BYTES = 8 * 1024 * 1024;
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
-function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, withNoStore({ status: 401 }));
-}
-
 /** Artist/admin image uploads are stored in the configured first-party object store. */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (session?.role !== "artist" && !(await getAdminSession())) return unauthorized();
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
 
   const rateKey = `upload:${clientIp(req)}`;
   if (tooManyAttempts(rateKey)) {

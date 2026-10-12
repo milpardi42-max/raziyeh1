@@ -1,23 +1,23 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getContent, updateCollection } from "@/lib/data/store";
+import { requireArtistOrAdmin as requireApprovedArtistOrAdmin } from "@/lib/marketplace/guard";
+import { mutateCollection } from "@/lib/data/store";
 import { withNoStore } from "@/lib/http";
 import type { ArtistSubscription } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, withNoStore({ status: 401 }));
+function withContentEtag(response: NextResponse, etag: string) {
+  response.headers.set("ETag", `"${etag}"`);
+  return response;
 }
 
 /**
  * POST /api/artist/subscription — upgrades or updates artist subscription plan
  */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || (session.role !== "artist" && session.role !== "admin")) {
-    return unauthorized();
-  }
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const body = (await req.json().catch(() => null)) as {
     planId: "starter" | "pro" | "studio";
@@ -28,13 +28,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "missing_plan" }, withNoStore({ status: 400 }));
   }
 
-  const content = await getContent();
-  const idx = content.artists.findIndex((a) => a.id === session.artistId || a.userId === session.id);
-  if (idx === -1) {
-    return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
-  }
-
-  const artist = content.artists[idx];
   const months = body.periodMonths || (body.planId === "starter" ? 12 : 1);
   const now = new Date();
   const validUntil = new Date(now.setMonth(now.getMonth() + months)).toISOString();
@@ -60,14 +53,30 @@ export async function POST(req: Request) {
     badge: badges[body.planId],
   };
 
-  const updatedArtist = {
-    ...artist,
-    subscription,
-    acceptsCommissions: true,
-  };
+  try {
+    const { result: updatedArtist, etag } = await mutateCollection("artists", (artists) => {
+      const index = artists.findIndex((artist) => artist.id === session.artistId || artist.userId === session.id);
+      if (index < 0) throw new Error("artist_not_found");
 
-  const allArtists = content.artists.map((a, i) => (i === idx ? updatedArtist : a));
-  await updateCollection("artists", allArtists);
+      const updatedArtist = {
+        ...artists[index],
+        subscription,
+        acceptsCommissions: true,
+      };
+      const nextArtists = [...artists];
+      nextArtists[index] = updatedArtist;
+      return { items: nextArtists, result: updatedArtist };
+    });
 
-  return NextResponse.json({ ok: true, subscription, artist: updatedArtist }, withNoStore());
+    return withContentEtag(
+      NextResponse.json({ ok: true, subscription, artist: updatedArtist }, withNoStore()),
+      etag,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === "artist_not_found") {
+      return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
+    }
+    console.error("Failed to update artist subscription", error);
+    return NextResponse.json({ ok: false, error: "subscription_update_failed" }, withNoStore({ status: 500 }));
+  }
 }

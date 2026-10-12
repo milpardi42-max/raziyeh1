@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SESSION_FETCH } from "@/lib/http";
+import type { Artist } from "@/lib/types";
+import type { AdminContentMutation } from "@/lib/admin-content-mutation";
 
 /* ─── Types ─── */
 export interface AdminUser {
@@ -167,9 +169,6 @@ function ActionMenu({
 
   if (user.role === "admin") return null;
 
-  const otherRole = user.role === "user" ? "artist" : "user";
-  const otherLabel = user.role === "user" ? "تغییر به هنرمند/طراح" : "تغییر به کاربر عادی";
-
   return (
     <div ref={ref} className="relative">
       <button
@@ -180,13 +179,15 @@ function ActionMenu({
       </button>
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-border bg-white shadow-medium">
-          <button
-            onClick={() => { onRoleChange(user.id, otherRole); setOpen(false); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-background-secondary"
-          >
-            <UserCheck className="h-4 w-4 text-purple-500" />
-            {otherLabel}
-          </button>
+          {user.role === "user" && (
+            <button
+              onClick={() => { onRoleChange(user.id, "artist"); setOpen(false); }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-background-secondary"
+            >
+              <UserCheck className="h-4 w-4 text-purple-500" />
+              تبدیل به هنرمند/طراح (در انتظار تأیید)
+            </button>
+          )}
           <button
             onClick={() => { onPdfSingle(user); setOpen(false); }}
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-background-secondary"
@@ -216,7 +217,9 @@ const SIGNUP_ERRORS: Record<string, string> = {
   server_error: "خطای سرور. لطفاً دوباره تلاش کنید.",
 };
 
-function SignupPanel({ onCreated }: { onCreated: (u: AdminUser) => void }) {
+function SignupPanel({ onCreated }: {
+  onCreated: (u: AdminUser, mutation?: AdminContentMutation) => void;
+}) {
   const [roleTab, setRoleTab] = useState<"artist" | "user">("artist");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -240,13 +243,23 @@ function SignupPanel({ onCreated }: { onCreated: (u: AdminUser) => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, email, password, role: roleTab }),
       });
-      const d = (await r.json()) as { ok: boolean; error?: string; user?: AdminUser };
+      const d = (await r.json()) as { ok: boolean; error?: string; user?: AdminUser; artist?: Artist };
       if (!d.ok) {
         setErr(SIGNUP_ERRORS[d.error ?? "server_error"] ?? "خطای ناشناخته");
       } else {
-        setSuccess(`کاربر "${name}" با موفقیت ثبت شد.`);
+        setSuccess(roleTab === "artist"
+          ? `درخواست هنرمندی «${name}» ثبت شد و تا تأیید ادمین pending می‌ماند.`
+          : `کاربر «${name}» با موفقیت ثبت شد.`);
         formRef.current?.reset();
-        if (d.user) onCreated(d.user);
+        if (d.user) {
+          const mutation = d.artist
+            ? {
+                etag: r.headers.get("ETag"),
+                artist: { kind: "upsert" as const, value: d.artist },
+              }
+            : undefined;
+          onCreated(d.user, mutation);
+        }
       }
     } catch {
       setErr("خطای شبکه. لطفاً دوباره تلاش کنید.");
@@ -356,7 +369,11 @@ function SignupPanel({ onCreated }: { onCreated: (u: AdminUser) => void }) {
 /* ═══════════════════════════════════════════════════════════
    کامپوننت اصلی مدیریت کاربران
    ═══════════════════════════════════════════════════════════ */
-export function UsersManager() {
+export function UsersManager({
+  onContentMutation,
+}: {
+  onContentMutation: (mutation: AdminContentMutation) => void;
+}) {
   const [mainTab, setMainTab] = useState<"list" | "signup">("list");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -409,8 +426,28 @@ export function UsersManager() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, role }),
       });
-      if (!r.ok) throw new Error();
-      showToast("نقش کاربر بروز شد");
+      const result = (await r.json().catch(() => null)) as {
+        ok?: boolean;
+        user?: AdminUser;
+        artist?: Artist;
+        createdArtistProfile?: boolean;
+      } | null;
+      if (!r.ok || !result?.ok || !result.user) throw new Error();
+      setUsers((us) => us.map((u) => (u.id === id ? result.user! : u)));
+      const contentEtag = r.headers.get("ETag");
+      if (contentEtag && result.artist) {
+        onContentMutation({
+          etag: contentEtag,
+          artist: result.createdArtistProfile
+            ? { kind: "upsert", value: result.artist }
+            : {
+                kind: "patch",
+                id: result.artist.id,
+                value: { status: result.artist.status, rejectionNote: result.artist.rejectionNote },
+              },
+        });
+      }
+      showToast(role === "artist" ? "درخواست هنرمندی ثبت شد و در انتظار تأیید است" : "نقش کاربر بروز شد");
     } catch {
       if (prev) setUsers((us) => us.map((u) => (u.id === id ? prev : u)));
       showToast("خطا در تغییر نقش", false);
@@ -419,7 +456,7 @@ export function UsersManager() {
 
   /* Delete */
   const handleDelete = async (id: string) => {
-    if (!confirm("آیا مطمئن هستید؟ این عمل قابل بازگشت نیست.")) return;
+    if (!confirm("آیا مطمئن هستید؟ این عمل قابل بازگشت نیست و پروفایل هنرمندیِ متصل نیز حذف می‌شود.")) return;
     const prev = users.find((u) => u.id === id);
     setUsers((us) => us.filter((u) => u.id !== id));
     setSelected((s) => { const n = new Set(s); n.delete(id); return n; });
@@ -430,7 +467,14 @@ export function UsersManager() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      if (!r.ok) throw new Error();
+      const result = await r.json().catch(() => null) as { ok?: boolean; removedArtistIds?: string[] } | null;
+      if (!r.ok || !result?.ok) throw new Error();
+      if (result.removedArtistIds?.length) {
+        onContentMutation({
+          etag: r.headers.get("ETag"),
+          artist: { kind: "remove", ids: result.removedArtistIds },
+        });
+      }
       showToast("کاربر حذف شد");
     } catch {
       if (prev) setUsers((us) => [...us, prev]);
@@ -568,8 +612,9 @@ export function UsersManager() {
 
       {mainTab === "signup" && (
         <SignupPanel
-          onCreated={(u) => {
+          onCreated={(u, mutation) => {
             setUsers((prev) => [u, ...prev]);
+            if (mutation) onContentMutation(mutation);
             setMainTab("list");
             showToast(`کاربر "${u.name}" با موفقیت ثبت شد.`);
           }}

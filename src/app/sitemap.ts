@@ -1,4 +1,5 @@
-import { isPublicArtist } from "@/lib/artist/public-profile";
+import { publicSiteContent } from "@/lib/artist/public-profile";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { isStudioPortfolio, isPublishedPortfolio, artistPortfolioWorks, artistPortfolioPath } from "@/lib/artist/portfolio";
 import type { MetadataRoute } from "next";
 import { getContent } from "@/lib/data/store";
@@ -7,7 +8,7 @@ import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n/types";
 /** Static route segments of the storefront (locale-prefixed). Admin/checkout/account are excluded. */
 const STATIC_PAGES = [
   "", "about", "academy", "artists", "collections", "contact", "creators/join", "custom",
-  "faq", "patterns", "portfolio", "projects", "razieh", "returns", "shop", "spaces", "stories", "styles",
+  "faq", "marketplace", "marketplace/subscriptions", "patterns", "portfolio", "projects", "razieh", "returns", "shop", "spaces", "stories", "styles",
 ] as const;
 
 /** collection (key of SiteContent) → route segment its detail pages live under */
@@ -44,7 +45,9 @@ export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const content = await getContent();
-  const site = { ...content, artists: content.artists.filter(isPublicArtist), portfolios: content.portfolios.filter(p => isStudioPortfolio(p) && isPublishedPortfolio(p)) };
+  const site = publicSiteContent(content);
+  site.portfolios = site.portfolios.filter((portfolio) => isStudioPortfolio(portfolio) && isPublishedPortfolio(portfolio));
+  site.education = publicEducationItems(site.education);
   const url = (l: Locale, path: string) => `${SITE_URL}/${l}${path ? `/${path}` : ""}`;
 
   const entries: MetadataRoute.Sitemap = [];

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/auth";
-import { getAllUsers, toPublicUser, updateUser, saveAllUsers, createUser } from "@/lib/data/users";
+import { getContentWithEtag, mutateContent } from "@/lib/data/store";
+import { getAllUsers, findUserById, toPublicUser, updateUser, saveAllUsers, createUser, upgradeUserToArtist } from "@/lib/data/users";
 import { withNoStore } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,11 @@ async function requireAdmin() {
   const session = await getAdminSession();
   if (!session || session.role !== "admin") return null;
   return session;
+}
+
+function withContentEtag(response: NextResponse, etag: string) {
+  response.headers.set("ETag", `"${etag}"`);
+  return response;
 }
 
 /** GET /api/admin/users — list all users (without passwordHash) */
@@ -36,7 +42,36 @@ export async function PATCH(req: Request) {
   if (!["user", "artist"].includes(body.role)) {
     return NextResponse.json({ ok: false, error: "invalid_role" }, withNoStore({ status: 400 }));
   }
-  const updated = await updateUser(body.id, { role: body.role as "user" | "artist" });
+  const current = await findUserById(body.id);
+  if (!current) {
+    return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
+  }
+  if (current.role === "admin") {
+    return NextResponse.json({ ok: false, error: "admin_role_protected" }, withNoStore({ status: 409 }));
+  }
+
+  if (body.role === "artist") {
+    const result = await upgradeUserToArtist(current.id);
+    if (!result) {
+      return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
+    }
+    const response = NextResponse.json({
+      ok: true,
+      user: toPublicUser(result.user),
+      createdArtistProfile: result.createdProfile,
+      ...(result.artist ? { artist: result.artist } : {}),
+    }, withNoStore());
+    if (result.contentEtag) response.headers.set("ETag", `"${result.contentEtag}"`);
+    return response;
+  }
+
+  // Role downgrades must go through artist-profile management so they cannot
+  // leave an approved public profile linked to a buyer account.
+  if (current.role === "artist") {
+    return NextResponse.json({ ok: false, error: "artist_profile_management_required" }, withNoStore({ status: 409 }));
+  }
+
+  const updated = await updateUser(body.id, { role: "user" });
   if (!updated) {
     return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
   }
@@ -53,12 +88,34 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, withNoStore({ status: 400 }));
   }
   const users = await getAllUsers();
-  const filtered = users.filter((u) => u.id !== body.id);
-  if (filtered.length === users.length) {
+  const target = users.find((user) => user.id === body.id);
+  if (!target) {
     return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
   }
-  await saveAllUsers(filtered);
-  return NextResponse.json({ ok: true }, withNoStore());
+
+  let mutation: Awaited<ReturnType<typeof mutateContent<string[]>>>;
+  try {
+    mutation = await mutateContent((content) => {
+      const linkedArtistIds = content.artists
+        .filter((item) => item.userId === target.id
+          || (item.id === target.artistId && (!item.userId || item.userId === target.id)))
+        .map((item) => item.id);
+      const removed = new Set(linkedArtistIds);
+      return {
+        content: { ...content, artists: content.artists.filter((item) => !removed.has(item.id)) },
+        result: linkedArtistIds,
+      };
+    });
+  } catch (error) {
+    console.error("[admin/users] linked artist removal failed:", error);
+    return NextResponse.json({ ok: false, error: "content_update_failed" }, withNoStore({ status: 502 }));
+  }
+
+  await saveAllUsers(users.filter((user) => user.id !== target.id));
+  return withContentEtag(
+    NextResponse.json({ ok: true, removedArtistIds: mutation.result }, withNoStore()),
+    mutation.etag,
+  );
 }
 
 /** POST /api/admin/users — create a new user (admin only) */
@@ -84,7 +141,15 @@ export async function POST(req: Request) {
 
   try {
     const stored = await createUser(body.name, body.email, body.password, role);
-    return NextResponse.json({ ok: true, user: toPublicUser(stored) }, withNoStore());
+    const contentMutation = stored.artistId ? await getContentWithEtag() : null;
+    const artist = contentMutation?.[0].artists.find((item) => item.id === stored.artistId);
+    const response = NextResponse.json({
+      ok: true,
+      user: toPublicUser(stored),
+      ...(artist ? { artist } : {}),
+    }, withNoStore());
+    if (artist && contentMutation) response.headers.set("ETag", `"${contentMutation[1]}"`);
+    return response;
   } catch (e) {
     if (e instanceof Error && e.message === "email_taken") {
       return NextResponse.json({ ok: false, error: "email_taken" }, withNoStore({ status: 409 }));

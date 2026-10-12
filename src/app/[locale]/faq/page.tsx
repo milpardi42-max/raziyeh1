@@ -4,12 +4,13 @@ import { getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  return { title: dictionaries[locale].footer.faq };
+  return getEditableRouteMetadata("/faq", locale, dictionaries[locale].footer.faq);
 }
 export default async function FaqPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;

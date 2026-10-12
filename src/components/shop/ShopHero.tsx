@@ -7,6 +7,7 @@ import { familyName } from "@/lib/data/families";
 import type { Locale } from "@/lib/i18n/types";
 import type { EnrichedProduct } from "@/lib/data/queries";
 import { contentHref, faNum, formatPrice, href, isExternalContentHref, t } from "@/lib/utils";
+import { getProductColor, getProductColors } from "@/lib/product-variants";
 
 export interface ShopFamilyChip {
   /** family slug — `?family=<id>` */
@@ -62,7 +63,7 @@ export function ShopHero({ locale, eyebrow, title, description, products, famili
   const second = products.find((p) => p.id !== lead?.id && !p.artistId && p.isNew) ?? products.find((p) => p.id !== lead?.id);
 
   const familiesInUse = families.filter((f) => (f.count ?? 0) > 0).length;
-  const colourways = products.reduce((total, p) => total + p.colors.length, 0);
+  const colourways = products.reduce((total, p) => total + getProductColors(p).length, 0);
   const makers = new Set(products.map((p) => p.artistId).filter(Boolean)).size;
 
   const stats = [
@@ -72,7 +73,7 @@ export function ShopHero({ locale, eyebrow, title, description, products, famili
     { value: num(makers), label: labels.makers },
   ];
 
-  const leadColours = lead?.colors ?? [];
+  const leadColours = getProductColors(lead);
   const makerOf = (p: EnrichedProduct) => (p.artist ? t(p.artist.name, locale) : brand);
 
   return (
@@ -127,7 +128,7 @@ export function ShopHero({ locale, eyebrow, title, description, products, famili
             className="group relative row-span-2 min-h-[320px] overflow-hidden rounded-xl bg-background-secondary sm:min-h-[440px]"
           >
             <Image
-              src={lead.colors[0].image}
+              src={getProductColor(lead).image}
               alt={t(lead.title, locale)}
               fill
               priority
@@ -164,7 +165,7 @@ export function ShopHero({ locale, eyebrow, title, description, products, famili
             className="group relative min-h-[200px] overflow-hidden rounded-xl bg-background-secondary"
           >
             <Image
-              src={second.colors[0].image}
+              src={getProductColor(second).image}
               alt={t(second.title, locale)}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 26vw"

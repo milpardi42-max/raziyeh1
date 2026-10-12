@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
   const s = site.spaces.find((x) => x.slug === slug);
-  return s ? { title: t(s.name, locale) } : {};
+  return s ? { title: t(s.name, locale), alternates: { canonical: `/${locale}/spaces/${slug}` } } : {};
 }
 export default async function SpacePage({ params }: Props) {
   const { locale, slug } = await params;

@@ -1,4 +1,4 @@
-import { bumpAssetViews, filterAssets, getAsset, getAssets, isPurchasable, listPublicAssets } from "@/lib/marketplace/assets";
+import { artistCanPublishAsset, bumpAssetViews, filterAssets, getAsset, getAssets, isPurchasable, listPublicAssets } from "@/lib/marketplace/assets";
 import { hasRtl } from "@/lib/marketplace/pdf/textpath";
 import { recordEvent } from "@/lib/marketplace/analytics";
 import { json, numberParam } from "@/lib/marketplace/guard";
@@ -21,7 +21,11 @@ export async function GET(request: Request) {
 
   if (id || slug) {
     const asset = id ? await getAsset(id) : (await getAssets()).find((item) => item.slug === slug) ?? null;
-    if (!asset || (asset.status !== "approved" && asset.status !== "sold_exclusive")) {
+    if (
+      !asset
+      || (asset.status !== "approved" && asset.status !== "sold_exclusive")
+      || !(await artistCanPublishAsset(asset))
+    ) {
       return json({ ok: false, error: "not_found" }, { status: 404 });
     }
     if (asset.status === "approved") {

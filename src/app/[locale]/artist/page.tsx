@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Palette, Sparkles } from "lucide-react";
 import { ArtistDashboardPanel } from "@/components/artist/ArtistDashboardPanel";
+import { ArtistApprovalNotice } from "@/components/artist/ArtistApprovalNotice";
+import { getArtistApprovalStatus } from "@/lib/artist/access";
 import { getSession } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
@@ -63,6 +65,9 @@ export default async function ArtistDashboardPage({ params }: { params: Promise<
       </div>
     );
   }
+
+  const approval = await getArtistApprovalStatus(session);
+  if (approval !== "approved") return <ArtistApprovalNotice locale={locale} status={approval} />;
 
   return <ArtistDashboardPanel locale={locale} userId={session.id} artistId={session.artistId} />;
 }

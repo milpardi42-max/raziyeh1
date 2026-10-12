@@ -1,5 +1,6 @@
 import "server-only";
 import type { NavData } from "@/components/layout/nav-data";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { getSite } from "./queries";
 
 export async function getNavData(): Promise<NavData> {
@@ -10,7 +11,7 @@ export async function getNavData(): Promise<NavData> {
     artists: site.artists.map(({ slug, name, profession, avatar }) => ({ slug, name, profession, avatar })),
     patterns: site.patterns.map(({ slug, title, image, sku }) => ({ slug, title, image, sku })),
     portfolios: site.portfolios.map(({ slug, title, cover }) => ({ slug, title, cover })),
-    education: site.education.map(({ slug, title, image, type }) => ({ slug, title, image, type })),
+    education: publicEducationItems(site.education).map(({ slug, title, image, type }) => ({ slug, title, image, type })),
     collections: site.collections.map(({ slug, title, cover }) => ({ slug, title, cover })),
     storeProducts: site.products
       .slice()

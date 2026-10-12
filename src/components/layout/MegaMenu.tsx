@@ -6,6 +6,7 @@ import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "@/components/providers/AppProviders";
 import { cn, href, t } from "@/lib/utils";
+import { getProductColors } from "@/lib/product-variants";
 import type { NavData } from "./nav-data";
 
 type Group = "patterns" | "products" | "artists" | "portfolio" | "education" | "collections" | "categories";
@@ -19,7 +20,7 @@ export function MegaMenu({ nav, onNavigate }: { nav: NavData; onNavigate: () => 
     { id: "artists", label: dict.nav.artists, href: "/artists", preview: nav.artists[0]?.avatar ?? "", desc: locale === "fa" ? "آدم‌های پشت پترن‌ها" : "The people behind the patterns" },
     { id: "portfolio", label: dict.nav.portfolio, href: "/portfolio", preview: nav.portfolios[0]?.cover ?? "", desc: locale === "fa" ? "گالری پروژه‌ها" : "Project gallery" },
     { id: "education", label: dict.nav.education, href: "/academy", preview: nav.education[0]?.image ?? "", desc: locale === "fa" ? "یادگیری طراحی پترن" : "Learn pattern design" },
-    { id: "products", label: dict.nav.products, href: "/shop", preview: nav.storeProducts[0]?.colors[0]?.image ?? "", desc: locale === "fa" ? "کالکشن اختصاصی و محصولات" : "Exclusive collection & products" },
+    { id: "products", label: dict.nav.products, href: "/shop", preview: getProductColors(nav.storeProducts[0])[0]?.image ?? "", desc: locale === "fa" ? "کالکشن اختصاصی و محصولات" : "Exclusive collection & products" },
   ];
   const [hover, setHover] = useState<Group>("patterns");
   const active = groups.find((g) => g.id === hover) ?? groups[0];
@@ -31,7 +32,7 @@ export function MegaMenu({ nav, onNavigate }: { nav: NavData; onNavigate: () => 
     artists: nav.artists.map((a) => ({ label: t(a.name, locale), href: `/artists/${a.slug}`, image: a.avatar })),
     portfolio: nav.portfolios.slice(0, 6).map((p) => ({ label: t(p.title, locale), href: `/portfolio/${p.slug}`, image: p.cover })),
     education: nav.education.slice(0, 6).map((e) => ({ label: t(e.title, locale), href: `/academy/${e.slug}`, image: e.image })),
-    products: nav.storeProducts.slice(0, 6).map((p) => ({ label: t(p.title, locale), href: `/shop/${p.slug}`, image: p.colors[0]?.image })),
+    products: nav.storeProducts.slice(0, 6).map((p) => ({ label: t(p.title, locale), href: `/shop/${p.slug}`, image: getProductColors(p)[0]?.image })),
   };
 
   return (

@@ -65,9 +65,14 @@ test("buyer → seller upgrade is self-service but never for someone else's acco
 test("upgradeUserToArtist is idempotent", () => {
   const users = read("src/lib/data/users.ts");
   assert.match(users, /export async function upgradeUserToArtist\(/);
-  assert.match(users, /if \(user\.role === "artist" \|\| user\.role === "admin"\) \{\s*\n\s*return \{ user, createdProfile: false \}/);
-  // the pending showcase profile is the same one the seller registration creates
-  assert.match(users, /user\.artistId \?\? \(await createPendingArtist\(user\.id, user\.name, user\.email, extra\)\)/);
+  assert.match(users, /if \(user\.role === "admin"\) return \{ user, createdProfile: false \}/);
+  assert.match(users, /content\.artists\.find\(\(artist\) => artist\.userId === user\.id\)/);
+  const explicitArtistLookup = users.indexOf("content.artists.find((artist) => artist.id === user.artistId");
+  const userIdFallback = users.indexOf("content.artists.find((artist) => artist.userId === user.id");
+  assert.ok(explicitArtistLookup >= 0 && userIdFallback > explicitArtistLookup, "prefer the account's explicit artistId before legacy userId lookup");
+  assert.match(users, /if \(user\.role !== "artist"\)[\s\S]*?status: "pending", rejectionNote: undefined/);
+  // Existing linked profiles are reused; otherwise the same pending profile factory is used.
+  assert.match(users, /existingArtist\?\.id[\s\S]*?createPendingArtist\(user\.id, user\.name, user\.email, extra\)/);
 });
 
 test("the seller form upgrades an existing buyer instead of failing on email_taken", () => {

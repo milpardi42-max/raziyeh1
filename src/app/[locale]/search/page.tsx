@@ -5,6 +5,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { EducationCard } from "@/components/cards/EducationCard";
 import { EmptyState } from "@/components/ui/States";
 import { enrichEducation, enrichPattern, enrichProduct, getSite } from "@/lib/data/queries";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
@@ -23,7 +24,7 @@ export default async function SearchPage({ params, searchParams }: { params: Pro
   const m = (l: { fa: string; en: string }) => !s || l.fa.includes(s) || l.en.toLowerCase().includes(s);
   const patterns = site.patterns.filter((p) => m(p.title) || p.sku.toLowerCase().includes(s)).map((p) => enrichPattern(site, p));
   const products = site.products.filter((p) => m(p.title) || p.sku.toLowerCase().includes(s)).map((p) => enrichProduct(site, p));
-  const education = site.education.filter((e) => m(e.title)).map((e) => enrichEducation(site, e));
+  const education = publicEducationItems(site.education).filter((e) => m(e.title)).map((e) => enrichEducation(site, e));
   const total = patterns.length + products.length + education.length;
 
   const breadcrumb = [

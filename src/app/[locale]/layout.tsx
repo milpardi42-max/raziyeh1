@@ -43,7 +43,6 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       description: d?.tagline,
       images: ["/images/hero/hero-main.jpg"],
     },
-    alternates: { canonical: `/${locale}` },
   };
 }
 

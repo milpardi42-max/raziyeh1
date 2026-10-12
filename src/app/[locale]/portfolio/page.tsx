@@ -8,17 +8,14 @@ import { PortfolioCollaboration, PortfolioIntro } from "@/components/portfolio/P
 import { enrichPortfolio, getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
-import { t } from "@/lib/utils";
 import { getUsedPortfolioCategories } from "@/lib/portfolio-categories";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  const content = await getSite();
-  const site = { ...content, portfolios: content.portfolios.filter(p => isStudioPortfolio(p) && isPublishedPortfolio(p)) };
-  const m = site.seo.find((s) => s.path === "/portfolio");
-  return m ? { title: { absolute: t(m.title, locale) }, description: t(m.description, locale) } : { title: dictionaries[locale].nav.portfolio };
+  return getEditableRouteMetadata("/portfolio", locale, dictionaries[locale].nav.portfolio);
 }
 
 export default async function PortfolioPage({ params }: { params: Promise<{ locale: Locale }> }) {

@@ -1,5 +1,6 @@
 import "server-only";
 import { getContent } from "./store";
+import { publicSiteContent } from "@/lib/artist/public-profile";
 import type { SiteContent } from "../types";
 
 export type {
@@ -23,5 +24,5 @@ export {
 } from "./enrich";
 
 export async function getSite(): Promise<SiteContent> {
-  return getContent();
+  return publicSiteContent(await getContent());
 }

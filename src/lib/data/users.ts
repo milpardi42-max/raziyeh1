@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
 import { getContent, updateCollection } from "./store";
+import type { Artist } from "../types";
 
 /**
  * User store — same dual-backend pattern as the content store.
@@ -181,7 +182,7 @@ export async function createUser(
       resolvedArtistId = artistId;
     } else {
       // Self-registration via /creators/join — create a fresh "pending" Artist record
-      resolvedArtistId = await createPendingArtist(userId, name, email, signupExtra);
+      resolvedArtistId = (await createPendingArtist(userId, name, email, signupExtra)).artistId;
     }
   }
 
@@ -207,10 +208,9 @@ async function createPendingArtist(
   name: string,
   _email: string,
   extra?: ArtistSignupExtra,
-): Promise<string> {
-  const content = await getContent();
-
-  // Derive a unique slug from the name
+): Promise<{ artistId: string; artist: Artist; etag: string }> {
+  // Derive the base slug here, then choose a unique value inside the atomic
+  // content mutation so concurrent signups cannot claim the same slug.
   const base = name
     .trim()
     .toLowerCase()
@@ -218,13 +218,6 @@ async function createPendingArtist(
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || "artist";
-
-  let slug = base;
-  let i = 1;
-  while (content.artists.some((a) => a.slug === slug)) {
-    slug = `${base}-${i}`;
-    i += 1;
-  }
 
   const artistId = `artist-${crypto.randomBytes(8).toString("hex")}`;
 
@@ -269,7 +262,7 @@ async function createPendingArtist(
 
   const newArtist = {
     id: artistId,
-    slug,
+    slug: base,
     name: { fa: name, en: name },
     profession: {
       fa: extra?.specialty || "هنرمند طراح و مجری پتینه",
@@ -292,8 +285,8 @@ async function createPendingArtist(
       "custom-art",
     ],
     userId,
-    status: "approved" as const, // approved so new artists immediately appear on the artists page!
-    revenueSharePct: content.financialConfig?.defaultArtistSharePct ?? 35,
+    status: "pending" as const,
+    revenueSharePct: 35,
     licenseType: "standard" as const,
     acceptsCommissions: true,
     commissionNotice: {
@@ -324,8 +317,22 @@ async function createPendingArtist(
     ...(extra?.termsAt ? { signupTermsAt: extra.termsAt } : {}),
   };
 
-  await updateCollection("artists", [...content.artists, newArtist]);
-  return artistId;
+  let createdArtist = newArtist as Artist;
+  const etag = await updateCollection("artists", (artists, content) => {
+    let slug = base;
+    let suffix = 1;
+    while (artists.some((artist) => artist.slug === slug)) {
+      slug = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    createdArtist = {
+      ...newArtist,
+      slug,
+      revenueSharePct: content.financialConfig?.defaultArtistSharePct ?? 35,
+    };
+    return [...artists, createdArtist];
+  });
+  return { artistId, artist: createdArtist, etag };
 }
 
 /**
@@ -342,21 +349,52 @@ async function createPendingArtist(
 export async function upgradeUserToArtist(
   userId: string,
   extra?: ArtistSignupExtra,
-): Promise<{ user: StoredUser; createdProfile: boolean } | null> {
+): Promise<{ user: StoredUser; createdProfile: boolean; artist?: Artist; contentEtag?: string } | null> {
   const users = await getAllUsers();
   const index = users.findIndex((u) => u.id === userId);
   if (index === -1) return null;
 
   const user = users[index];
-  if (user.role === "artist" || user.role === "admin") {
-    return { user, createdProfile: false };
+  if (user.role === "admin") return { user, createdProfile: false };
+
+  const content = await getContent();
+  const existingArtist = (user.artistId
+    ? content.artists.find((artist) => artist.id === user.artistId && (!artist.userId || artist.userId === user.id))
+    : undefined)
+    ?? content.artists.find((artist) => artist.userId === user.id);
+  const createdProfile = !existingArtist;
+  let artist: Artist | undefined;
+  let contentEtag: string | undefined;
+  let artistId = existingArtist?.id;
+
+  if (existingArtist) {
+    artist = existingArtist;
+    // Every transition from buyer to seller re-enters manual review, including
+    // a legacy account that already has an artist record.
+    if (user.role !== "artist") {
+      contentEtag = await updateCollection("artists", (artists) => {
+        let found = false;
+        const updatedArtists = artists.map((item) => {
+          if (item.id !== existingArtist.id) return item;
+          found = true;
+          artist = { ...item, status: "pending", rejectionNote: undefined };
+          return artist;
+        });
+        if (!found) throw new Error("artist_not_found");
+        return updatedArtists;
+      });
+    }
+  } else {
+    const created = await createPendingArtist(user.id, user.name, user.email, extra);
+    artistId = created.artistId;
+    artist = created.artist;
+    contentEtag = created.etag;
   }
 
-  const artistId = user.artistId ?? (await createPendingArtist(user.id, user.name, user.email, extra));
   const updated: StoredUser = { ...user, role: "artist", artistId };
   users[index] = updated;
   await saveAllUsers(users);
-  return { user: updated, createdProfile: true };
+  return { user: updated, createdProfile, artist, contentEtag };
 }
 
 export async function updateUser(

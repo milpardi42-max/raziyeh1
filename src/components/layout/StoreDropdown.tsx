@@ -9,6 +9,7 @@ import { Badge, Sku } from "@/components/ui/Badge";
 import { AddToCartButton } from "@/components/product/Actions";
 import { ColorSwatches } from "@/components/product/ColorSwatches";
 import { cn, formatPrice, href, t } from "@/lib/utils";
+import { getProductColor, getProductColors, hasProductVariants, isProductVariantPurchasable } from "@/lib/product-variants";
 import type { NavData } from "./nav-data";
 
 const PAGE = 3;
@@ -44,8 +45,11 @@ export function StoreDropdown({ nav, onNavigate, compact }: { nav: NavData; onNa
 
         <ul key={page} className={cn("grid gap-4", compact ? "grid-cols-1" : "grid-cols-3")}>
           {visible.map((p, i) => {
-            const colorId = colorSel[p.slug] ?? p.colors[0]?.id;
-            const color = p.colors.find((c) => c.id === colorId) ?? p.colors[0];
+            const colors = getProductColors(p);
+            const colorId = colorSel[p.slug] ?? colors[0]?.id;
+            const color = getProductColor(p, colorId);
+            const hasVariants = hasProductVariants(p);
+            const canBuy = isProductVariantPurchasable(p, color.id);
             const url = href(locale, `/shop/${p.slug}`);
             return (
               <li key={p.slug} className="anim-fade-up rounded-lg border border-border bg-surface p-3 transition-shadow hover:shadow-medium" style={{ animationDelay: `${i * 50}ms` }}>
@@ -74,10 +78,10 @@ export function StoreDropdown({ nav, onNavigate, compact }: { nav: NavData; onNa
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <ColorSwatches size="sm" label={dict.common.color} options={p.colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))} value={colorId} onChange={(id) => setColorSel((s) => ({ ...s, [p.slug]: id }))} />
+                    {hasVariants && <ColorSwatches size="sm" label={dict.common.color} options={colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))} value={colorId ?? ""} onChange={(id) => setColorSel((s) => ({ ...s, [p.slug]: id }))} />}
                     <span className="truncate text-caption text-foreground-secondary">{t(color.name, locale)}</span>
                   </div>
-                  <AddToCartButton variant="icon" disabled={color.stock <= 0} line={{ kind: "product", id: p.id, sku: p.sku, title: t(p.title, locale), image: color.image, price: p.price, colorName: t(color.name, locale), colorHex: color.hex, href: url }} />
+                  <AddToCartButton variant="icon" disabled={!canBuy} line={{ kind: "product", id: p.id, sku: p.sku, title: t(p.title, locale), image: color.image, price: p.price, colorName: t(color.name, locale), colorHex: color.hex, href: url }} />
                 </div>
               </li>
             );

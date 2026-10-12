@@ -4,6 +4,7 @@ import { getSite } from "@/lib/data/queries";
 import { getAllReservations } from "@/lib/data/reservations";
 import { getSession } from "@/lib/auth";
 import { effectiveLiveStatus, hasGrantedReservation, isFreePrice, safeExternalHttpsUrl } from "@/lib/academy-live";
+import { isPublishedEducation } from "@/lib/academy/publication";
 import { type Locale } from "@/lib/i18n/types";
 import { t } from "@/lib/utils";
 import WebinarViewer from "@/components/academy/WebinarViewer";
@@ -30,7 +31,7 @@ function AccessNotice({ locale, title, message, slug, showLogin = false }: { loc
 export default async function LivePage({ params }: Props) {
   const { locale, slug } = await params;
   const [site, reservations, session] = await Promise.all([getSite(), getAllReservations(), getSession()]);
-  const item = site.education.find((entry) => entry.slug === slug && (entry.type === "webinar" || entry.type === "workshop"));
+  const item = site.education.find((entry) => isPublishedEducation(entry) && entry.slug === slug && (entry.type === "webinar" || entry.type === "workshop"));
   if (!item) notFound();
 
   const event = item.liveEvent;

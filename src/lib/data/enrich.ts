@@ -2,6 +2,7 @@ import { artistPortfolioWorks } from "@/lib/artist/portfolio";
 import { getPortfolioCategories } from "@/lib/portfolio-categories";
 import type { Artist, CourseVideoFile, EducationItem, LiveEventConfig, Pattern, Portfolio, Product, SiteContent } from "../types";
 import { effectiveLiveStatus } from "../academy-live";
+import { publicEducationItems } from "../academy/publication";
 
 export type Enriched<T> = T & { artist: Artist | null };
 
@@ -153,7 +154,7 @@ export function artistStats(site: SiteContent, artistId: string) {
     patterns: site.patterns.filter((p) => p.artistId === artistId),
     products: site.products.filter((p) => p.artistId === artistId),
     portfolios: artistPortfolioWorks(site.portfolios, artistId),
-    education: site.education.filter((e) => e.authorId === artistId),
+    education: publicEducationItems(site.education).filter((e) => e.authorId === artistId),
   };
 }
 

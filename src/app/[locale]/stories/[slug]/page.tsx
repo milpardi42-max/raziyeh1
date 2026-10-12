@@ -22,7 +22,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
   const s = site.stories.find((x) => x.slug === slug);
-  return s ? { title: t(s.title, locale), description: t(s.excerpt, locale) } : {};
+  return s ? {
+    title: t(s.title, locale),
+    description: t(s.excerpt, locale),
+    alternates: { canonical: `/${locale}/stories/${slug}` },
+  } : {};
 }
 export default async function StoryPage({ params }: Props) {
   const { locale, slug } = await params;

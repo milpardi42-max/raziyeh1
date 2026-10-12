@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Product image unavailable</title>
+  <desc id="desc">A neutral placeholder shown when a product has no available variant image.</desc>
+  <rect width="800" height="1000" fill="#f4f1eb"/>
+  <circle cx="400" cy="430" r="145" fill="#ebe6dc"/>
+  <path d="M314 395h172l24 31v111H290V426l24-31Z" fill="none" stroke="#9b9589" stroke-linejoin="round" stroke-width="12"/>
+  <path d="M290 426h220M365 395l35 31 35-31M366 478h68" fill="none" stroke="#9b9589" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"/>
+  <text x="400" y="660" fill="#746e64" font-family="Arial, sans-serif" font-size="26" text-anchor="middle">Variant image unavailable</text>
+</svg>

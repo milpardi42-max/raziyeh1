@@ -11,7 +11,7 @@ export function AuthShell({ title, description, image, children }: { title: stri
       </div>
       <div className="flex items-center justify-center px-6 pb-16 pt-[calc(var(--header-h)+3rem)]">
         <div className="w-full max-w-sm">
-          <Logo className="h-9 w-9 text-foreground" />
+          <Logo variant="mark" size={36} className="text-foreground" />
           <h1 className="mt-6 font-display text-h1">{title}</h1>
           <p className="mt-2 text-body-sm text-foreground-secondary">{description}</p>
           <div className="mt-8">{children}</div>

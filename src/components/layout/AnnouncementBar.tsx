@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X, Radio, CalendarClock, Megaphone, Tag } from "lucide-react";
+import { X, Radio, Megaphone, Tag } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useLocale } from "@/components/providers/AppProviders";
 import { cn, href, t } from "@/lib/utils";
@@ -14,6 +14,7 @@ import type {
   AnnouncementBarTransition,
   EducationItem,
 } from "@/lib/types";
+import { getNextAnnouncementBarExpiryAt, selectAnnouncementBar } from "@/lib/announcement-bars";
 
 interface Props {
   event: EducationItem | null;
@@ -84,12 +85,6 @@ function KindIcon({ kind, className }: { kind: AnnouncementBarKind; className?: 
   if (kind === "live-webinar" || kind === "webinar") return <Radio className={className} />;
   if (kind === "sale") return <Tag className={className} />;
   return <Megaphone className={className} />;
-}
-
-function isBarActive(bar: AnnouncementBarConfig): boolean {
-  if (!bar.enabled) return false;
-  if (bar.kind !== "live-webinar" && bar.expiresAt && new Date(bar.expiresAt).getTime() < Date.now()) return false;
-  return true;
 }
 
 /* ── Live-webinar bar — rendered only when a live event exists ── */
@@ -239,16 +234,19 @@ function ConfigBar({
 export function AnnouncementBar({ event, configBars = [] }: Props) {
   const { locale } = useLocale();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
   const dismiss = (id: string) => setDismissedIds((p) => new Set([...p, id]));
 
-  // Find the first enabled, non-dismissed, non-expired bar
-  const activeBar = configBars.find((b) => {
-    if (!isBarActive(b)) return false;
-    if (dismissedIds.has(b.id)) return false;
-    // live-webinar: only show if a live event actually exists right now
-    if (b.kind === "live-webinar") return !!event && event.liveEvent?.status === "live";
-    return true;
-  });
+  // Re-evaluate an enabled bar at its expiry boundary without waiting for navigation.
+  useEffect(() => {
+    const nextExpiry = getNextAnnouncementBarExpiryAt(configBars, now);
+    if (nextExpiry === null) return;
+    const delay = Math.max(0, nextExpiry - now + 25);
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [configBars, now]);
+
+  const activeBar = selectAnnouncementBar(configBars, event, now, dismissedIds);
 
   if (!activeBar) return null;
 

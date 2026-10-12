@@ -1,22 +1,30 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getSession } from "@/lib/auth";
-import { getContent, updateCollection } from "@/lib/data/store";
+import { requireArtistOrAdmin as requireApprovedArtistOrAdmin } from "@/lib/marketplace/guard";
+import { getContent, mutateCollection } from "@/lib/data/store";
 import { withNoStore } from "@/lib/http";
 import type { ArtistServiceItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, withNoStore({ status: 401 }));
+function withContentEtag(response: NextResponse, etag: string) {
+  response.headers.set("ETag", `"${etag}"`);
+  return response;
+}
+
+function mutationErrorResponse(error: unknown, operation: string) {
+  if (error instanceof Error && error.message === "artist_not_found") {
+    return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
+  }
+  console.error(`Failed to ${operation} artist service data`, error);
+  return NextResponse.json({ ok: false, error: "mutation_failed" }, withNoStore({ status: 500 }));
 }
 
 /** GET /api/artist/services — returns custom services & inquiries for current artist */
 export async function GET() {
-  const session = await getSession();
-  if (!session || (session.role !== "artist" && session.role !== "admin")) {
-    return unauthorized();
-  }
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const content = await getContent();
   const artist = content.artists.find((a) => a.id === session.artistId || a.userId === session.id);
@@ -40,23 +48,15 @@ export async function GET() {
 
 /** POST /api/artist/services — create a new custom service (patina, pattern, art, etc.) */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || (session.role !== "artist" && session.role !== "admin")) {
-    return unauthorized();
-  }
-
-  const content = await getContent();
-  const idx = content.artists.findIndex((a) => a.id === session.artistId || a.userId === session.id);
-  if (idx === -1) {
-    return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
-  }
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const body = (await req.json().catch(() => null)) as Partial<ArtistServiceItem> | null;
   if (!body || !body.title) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, withNoStore({ status: 400 }));
   }
 
-  const artist = content.artists[idx];
   const newService: ArtistServiceItem = {
     id: `srv-${crypto.randomBytes(6).toString("hex")}`,
     title: body.title,
@@ -72,27 +72,28 @@ export async function POST(req: Request) {
     active: body.active !== false,
   };
 
-  const services = [...(artist.services ?? []), newService];
-  const updatedArtist = { ...artist, services };
-  const allArtists = content.artists.map((a, i) => (i === idx ? updatedArtist : a));
+  try {
+    const { result, etag } = await mutateCollection("artists", (artists) => {
+      const index = artists.findIndex((artist) => artist.id === session.artistId || artist.userId === session.id);
+      if (index < 0) throw new Error("artist_not_found");
 
-  await updateCollection("artists", allArtists);
-
-  return NextResponse.json({ ok: true, service: newService, services }, withNoStore());
+      const services = [...(artists[index].services ?? []), newService];
+      const updatedArtist = { ...artists[index], services };
+      const nextArtists = [...artists];
+      nextArtists[index] = updatedArtist;
+      return { items: nextArtists, result: { service: newService, services } };
+    });
+    return withContentEtag(NextResponse.json({ ok: true, ...result }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "create");
+  }
 }
 
 /** PUT /api/artist/services — update an existing service or inquiry status */
 export async function PUT(req: Request) {
-  const session = await getSession();
-  if (!session || (session.role !== "artist" && session.role !== "admin")) {
-    return unauthorized();
-  }
-
-  const content = await getContent();
-  const idx = content.artists.findIndex((a) => a.id === session.artistId || a.userId === session.id);
-  if (idx === -1) {
-    return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
-  }
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const body = (await req.json().catch(() => null)) as {
     service?: Partial<ArtistServiceItem> & { id: string };
@@ -106,43 +107,51 @@ export async function PUT(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, withNoStore({ status: 400 }));
   }
 
-  const artist = content.artists[idx];
-  let updatedArtist = { ...artist };
+  try {
+    const { result: updatedArtist, etag } = await mutateCollection("artists", (artists) => {
+      const index = artists.findIndex((artist) => artist.id === session.artistId || artist.userId === session.id);
+      if (index < 0) throw new Error("artist_not_found");
 
-  if (body.service?.id) {
-    const services = (artist.services ?? []).map((s) =>
-      s.id === body.service?.id ? { ...s, ...body.service } : s,
-    );
-    updatedArtist = { ...updatedArtist, services };
+      const artist = artists[index];
+      let updatedArtist = { ...artist };
+
+      if (body.service?.id) {
+        const services = (artist.services ?? []).map((service) =>
+          service.id === body.service?.id ? { ...service, ...body.service } : service,
+        );
+        updatedArtist = { ...updatedArtist, services };
+      }
+
+      if (body.inquiryId && body.inquiryStatus) {
+        const inquiries = (artist.inquiries ?? []).map((inquiry) =>
+          inquiry.id === body.inquiryId ? { ...inquiry, status: body.inquiryStatus! } : inquiry,
+        );
+        updatedArtist = { ...updatedArtist, inquiries };
+      }
+
+      if (body.acceptsCommissions !== undefined) {
+        updatedArtist = { ...updatedArtist, acceptsCommissions: body.acceptsCommissions };
+      }
+
+      if (body.commissionNotice !== undefined) {
+        updatedArtist = { ...updatedArtist, commissionNotice: body.commissionNotice };
+      }
+
+      const nextArtists = [...artists];
+      nextArtists[index] = updatedArtist;
+      return { items: nextArtists, result: updatedArtist };
+    });
+    return withContentEtag(NextResponse.json({ ok: true, artist: updatedArtist }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "update");
   }
-
-  if (body.inquiryId && body.inquiryStatus) {
-    const inquiries = (artist.inquiries ?? []).map((inq) =>
-      inq.id === body.inquiryId ? { ...inq, status: body.inquiryStatus! } : inq,
-    );
-    updatedArtist = { ...updatedArtist, inquiries };
-  }
-
-  if (body.acceptsCommissions !== undefined) {
-    updatedArtist = { ...updatedArtist, acceptsCommissions: body.acceptsCommissions };
-  }
-
-  if (body.commissionNotice !== undefined) {
-    updatedArtist = { ...updatedArtist, commissionNotice: body.commissionNotice };
-  }
-
-  const allArtists = content.artists.map((a, i) => (i === idx ? updatedArtist : a));
-  await updateCollection("artists", allArtists);
-
-  return NextResponse.json({ ok: true, artist: updatedArtist }, withNoStore());
 }
 
 /** DELETE /api/artist/services?id=... — delete a service */
 export async function DELETE(req: Request) {
-  const session = await getSession();
-  if (!session || (session.role !== "artist" && session.role !== "admin")) {
-    return unauthorized();
-  }
+  const auth = await requireApprovedArtistOrAdmin();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const url = new URL(req.url);
   const serviceId = url.searchParams.get("id");
@@ -150,18 +159,18 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: false, error: "missing_id" }, withNoStore({ status: 400 }));
   }
 
-  const content = await getContent();
-  const idx = content.artists.findIndex((a) => a.id === session.artistId || a.userId === session.id);
-  if (idx === -1) {
-    return NextResponse.json({ ok: false, error: "artist_not_found" }, withNoStore({ status: 404 }));
+  try {
+    const { result: services, etag } = await mutateCollection("artists", (artists) => {
+      const index = artists.findIndex((artist) => artist.id === session.artistId || artist.userId === session.id);
+      if (index < 0) throw new Error("artist_not_found");
+
+      const services = (artists[index].services ?? []).filter((service) => service.id !== serviceId);
+      const nextArtists = [...artists];
+      nextArtists[index] = { ...artists[index], services };
+      return { items: nextArtists, result: services };
+    });
+    return withContentEtag(NextResponse.json({ ok: true, services }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "delete");
   }
-
-  const artist = content.artists[idx];
-  const services = (artist.services ?? []).filter((s) => s.id !== serviceId);
-  const updatedArtist = { ...artist, services };
-  const allArtists = content.artists.map((a, i) => (i === idx ? updatedArtist : a));
-
-  await updateCollection("artists", allArtists);
-
-  return NextResponse.json({ ok: true, services }, withNoStore());
 }

@@ -1,5 +1,6 @@
 import { isStudioPortfolio, isPublishedPortfolio } from "@/lib/artist/portfolio";
 import { siteStatistics } from "@/lib/data/statistics";
+import { publicEducationItems } from "@/lib/academy/publication";
 import type { Metadata } from "next";
 import { Hero } from "@/components/home/Hero";
 import {
@@ -21,16 +22,14 @@ import {
 import { artistStats, enrichEducation, enrichPattern, enrichPortfolio, enrichProduct, getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
-import { t } from "@/lib/utils";
 import { Fragment } from "react";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  const site = await getSite();
-  const meta = site.seo.find((s) => s.path === "/");
-  return { title: meta ? { absolute: t(meta.title, locale) } : undefined, description: meta ? t(meta.description, locale) : undefined };
+  return getEditableRouteMetadata("/", locale, dictionaries[locale].brand, dictionaries[locale].tagline);
 }
 
 export default async function HomePage({ params }: { params: Promise<{ locale: Locale }> }) {
@@ -44,7 +43,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: L
   const patterns = site.patterns.map((p) => enrichPattern(site, p));
   const products = site.products.slice().sort((a, b) => a.order - b.order).map((p) => enrichProduct(site, p));
   const portfolios = site.portfolios.filter(p => isStudioPortfolio(p) && isPublishedPortfolio(p)).map((p) => enrichPortfolio(site, p));
-  const education = site.education.map((e) => enrichEducation(site, e));
+  const education = publicEducationItems(site.education).map((e) => enrichEducation(site, e));
   const artists = site.artists
     .filter((a) => a.featured)
     .map((a) => {

@@ -1,6 +1,7 @@
 import "server-only";
 import { KEYS, mutateCollection, readCollection } from "./store";
 import { ensureMarketplaceSeed } from "./seed";
+import { isPublicArtistId } from "@/lib/artist/access";
 import { newId } from "./assets";
 import { artistBalance, defaultAffiliatePct, defaultArtistPct, saleEntries, splitRevenue } from "./royalty";
 import { addPrice, chargeFor, clampPrice, isZeroPrice, scalePrice, subPrice, ZERO_PRICE } from "./money";
@@ -291,7 +292,11 @@ export async function quote(request: QuoteRequest): Promise<Quote> {
       errors.push({ code: "asset_not_found", assetId: requested.assetId, message: { fa: "اثر یافت نشد.", en: "Work not found." } });
       continue;
     }
-    if (asset.status !== "approved" && asset.status !== "sold_exclusive") {
+    if (
+      (asset.status !== "approved" && asset.status !== "sold_exclusive")
+      || asset.visibility !== "public"
+      || !(await isPublicArtistId(asset.artistId))
+    ) {
       errors.push({
         code: "not_for_sale",
         assetId: asset.id,

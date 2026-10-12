@@ -42,8 +42,8 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
         <SuccessState
           message={
             fa
-              ? `شما با عنوان هنرمند طراح وارد شده‌اید. اکنون به داشبورد و غرفه اختصاصی خود بروید.`
-              : `You're already registered as an artist. Go to your dashboard.`
+              ? `این حساب با نقش هنرمند وارد شده است. وضعیت تأیید و دسترسی‌های فعال را در پنل هنرمند ببینید.`
+              : `This account has the artist role. Check your approval status and available tools in the artist dashboard.`
           }
         />
         <Button href={href(locale, "/artist")} className="mt-4">
@@ -180,20 +180,20 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
         <h3 className="font-display text-xl font-bold text-foreground">
           {isUpgrade
             ? fa
-              ? "حساب شما به فروشنده ارتقا یافت!"
-              : "Your account is now a seller account!"
+              ? "درخواست فروشندگی برای حساب شما ثبت شد"
+              : "Your seller application has been submitted"
             : fa
-              ? "ثبت‌نام شما با موفقیت انجام شد!"
-              : "Welcome to Rosie Atelier!"}
+              ? "درخواست هنرمندی شما ثبت شد"
+              : "Your artist application has been submitted"}
         </h3>
         <p className="text-xs sm:text-sm text-foreground-secondary max-w-md mx-auto leading-relaxed">
           {isUpgrade
             ? fa
-              ? "پروفایل هنرمندی شما ساخته شد و غرفه‌تان در صفحه هنرمندان فعال است. در حال انتقال به داشبورد…"
-              : "Your artist profile is created and your showcase is live on the artists page. Redirecting to your dashboard…"
+              ? "پروفایل شما برای بررسی ادمین ثبت شد. پس از تأیید دستی، پروفایل عمومی و ابزارهای فروش فعال می‌شوند. در حال انتقال به صفحه وضعیت…"
+              : "Your profile is queued for administrator review. Public listing and seller tools unlock after manual approval. Redirecting to your status page…"
             : fa
-              ? "پروفایل اختصاصی شما در صفحه هنرمندان ایجاد گردید و تب اقتصادی و غرفه اختصاصی شما در پنل فعال شد. در حال انتقال به داشبورد…"
-              : "Your dedicated profile has been created on the Artists Hub, and your Pro Showcase tab is active. Redirecting to your dashboard…"}
+              ? "پروفایل شما برای بررسی ادمین ثبت شد. تا زمان تأیید، در صفحه هنرمندان نمایش داده نمی‌شود و ابزارهای فروش غیرفعال هستند. در حال انتقال به صفحه وضعیت…"
+              : "Your profile is queued for administrator review. It stays off the Artists Hub and seller tools remain disabled until approval. Redirecting to your status page…"}
         </p>
         <div className="flex justify-center pt-2">
           <Loader2 className="h-5 w-5 animate-spin text-accent" />
@@ -369,11 +369,11 @@ export function CreatorSignupForm({ options }: CreatorSignupFormProps) {
           {state === "loading" && <Loader2 className="h-4 w-4 animate-spin" />}
           {isUpgrade
             ? fa
-              ? "ارتقا به فروشنده و ساخت غرفه"
-              : "Upgrade to seller & open storefront"
+              ? "ثبت درخواست فروشندگی"
+              : "Submit seller application"
             : fa
-              ? "ثبت‌نام و ایجاد غرفه اختصاصی"
-              : "Register & Open Storefront"}
+              ? "ثبت درخواست هنرمندی"
+              : "Submit artist application"}
         </Button>
         {!isUpgrade && (
           <p className="mt-3 text-caption text-foreground-secondary">

@@ -6,6 +6,7 @@ import { dictionaries } from "@/lib/i18n/dictionary";
 import { TERMS } from "@/lib/legal/terms";
 import { LOCALES, type Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 const docs = ["privacy", "terms", "licenses"] as const;
 type Doc = (typeof docs)[number];
@@ -20,7 +21,8 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, doc } = await params;
   const d = dictionaries[locale];
-  return { title: d.footer[doc as Doc] ?? d.footer.legal };
+  const path = `/legal/${doc}`;
+  return getEditableRouteMetadata(path, locale, d.footer[doc as Doc] ?? d.footer.legal);
 }
 export default async function LegalPage({ params }: Props) {
   const { locale, doc } = await params;

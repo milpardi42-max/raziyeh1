@@ -5,7 +5,6 @@ import { getReferralStats } from "@/lib/marketplace/analytics";
 import { listSandboxTransactions } from "@/lib/marketplace/payments/sandbox";
 import { sweepSandboxTransactions } from "@/lib/marketplace/payments/sandbox-sweeper";
 import { fail, json, readJson, requireAdmin } from "@/lib/marketplace/guard";
-import { getContent, saveContent } from "@/lib/data/store";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +56,8 @@ export async function GET(request: Request) {
 /**
  * POST /api/marketplace/admin
  *
- * settings  → platform knobs (VAT, artist share, affiliate percent, payout floor)
+ * settings  → marketplace-only operational knobs (referral discount, auto-approval, sale e-mails)
+ *             Active financial values are owned by SiteContent.financialConfig and its ETag-protected endpoint.
  * retry-mail → re-send one queued e-mail from the outbox
  */
 export async function POST(request: Request) {
@@ -81,34 +81,19 @@ export async function POST(request: Request) {
 
   if (body?.action === "settings") {
     const patch = body.settings ?? {};
+    const sharedFinancialKeys = ["vatPct", "artistSharePct", "affiliatePct", "payoutMinimumFa", "payoutMinimumEn"] as const;
+    if (sharedFinancialKeys.some((key) => patch[key] !== undefined)) {
+      return fail("financial_settings_managed_by_content_admin", 409);
+    }
+
+    // Shared active financial fields belong to SiteContent.financialConfig and are
+    // saved through the ETag-guarded content endpoint. This endpoint only owns the
+    // marketplace-specific operational switches and referral discount default.
     const settings = await updateSettings({
-      ...(patch.vatPct !== undefined ? { vatPct: clamp(patch.vatPct, 0, 30) } : {}),
-      ...(patch.artistSharePct !== undefined ? { artistSharePct: clamp(patch.artistSharePct, 0, 90) } : {}),
-      ...(patch.affiliatePct !== undefined ? { affiliatePct: clamp(patch.affiliatePct, 0, 50) } : {}),
       ...(patch.affiliateDiscountPct !== undefined ? { affiliateDiscountPct: clamp(patch.affiliateDiscountPct, 0, 80) } : {}),
-      ...(patch.payoutMinimumFa !== undefined ? { payoutMinimumFa: Math.max(0, patch.payoutMinimumFa) } : {}),
-      ...(patch.payoutMinimumEn !== undefined ? { payoutMinimumEn: Math.max(0, patch.payoutMinimumEn) } : {}),
       ...(patch.autoApproveSeamless !== undefined ? { autoApproveSeamless: patch.autoApproveSeamless } : {}),
       ...(patch.emailOnSale !== undefined ? { emailOnSale: patch.emailOnSale } : {}),
     });
-    const content = await getContent();
-    const financialConfig = content.financialConfig;
-    if (financialConfig) {
-      await saveContent({
-        ...content,
-        financialConfig: {
-          ...financialConfig,
-          ...(patch.artistSharePct !== undefined ? {
-            defaultCommissionPct: 100 - settings.artistSharePct,
-            defaultArtistSharePct: settings.artistSharePct,
-          } : {}),
-          ...(patch.affiliatePct !== undefined ? { affiliateCommissionPct: settings.affiliatePct } : {}),
-          ...(patch.vatPct !== undefined ? { vatPct: settings.vatPct } : {}),
-          ...(patch.payoutMinimumFa !== undefined ? { minPayoutFa: settings.payoutMinimumFa } : {}),
-          ...(patch.payoutMinimumEn !== undefined ? { minPayoutEn: settings.payoutMinimumEn } : {}),
-        },
-      });
-    }
     return json({ ok: true, settings });
   }
 

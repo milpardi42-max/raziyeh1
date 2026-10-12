@@ -14,6 +14,7 @@ import { CourseProgressSidebar } from "@/components/academy/CourseProgressSideba
 import { EnrollForm } from "@/components/academy/EnrollForm";
 import { VideoGrid, type AcademyVideoEntry } from "@/components/academy/VideoGrid";
 import { academyOverview } from "@/lib/data/academy";
+import { isPublishedEducation, publicEducationItems } from "@/lib/academy/publication";
 import { priceLabel } from "@/lib/utils";
 import { getAllReservations } from "@/lib/data/reservations";
 import { getSession } from "@/lib/auth";
@@ -29,7 +30,7 @@ type Props = { params: Promise<{ locale: Locale; slug: string }> };
 
 export async function generateStaticParams() {
   const site = await getSite();
-  return LOCALES.flatMap((locale) => site.education.map((item) => ({ locale, slug: item.slug })));
+  return LOCALES.flatMap((locale) => publicEducationItems(site.education).map((item) => ({ locale, slug: item.slug })));
 }
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
-  const e = site.education.find((x) => x.slug === slug);
+  const e = site.education.find((x) => x.slug === slug && isPublishedEducation(x));
   if (!e) return {};
   const title = t(e.title, locale);
   const description = t(e.excerpt, locale);
@@ -45,6 +46,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
+    alternates: { canonical: `/${locale}/academy/${slug}` },
     openGraph: {
       title,
       description,
@@ -66,7 +68,7 @@ export default async function EducationDetail({ params }: Props) {
   const nonce = await getCspNonce();
   const site = await getSite();
   const raw = site.education.find((x) => x.slug === slug);
-  if (!raw) notFound();
+  if (!raw || !isPublishedEducation(raw)) notFound();
   const d = dictionaries[locale];
   const e = enrichEducation(site, raw);
   const [reservations, session] = await Promise.all([getAllReservations(), getSession()]);
@@ -114,7 +116,7 @@ export default async function EducationDetail({ params }: Props) {
       content
     );
   };
-  const related = site.education
+  const related = publicEducationItems(site.education)
     .filter((x) => x.id !== e.id && (x.categoryId === e.categoryId || x.authorId === e.authorId))
     .slice(0, 3)
     .map((x) => enrichEducation(site, x));

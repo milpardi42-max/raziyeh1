@@ -10,18 +10,17 @@ import { getCoupon } from "@/lib/marketplace/orders";
 import { SUBSCRIPTION_PLANS } from "@/lib/marketplace/config";
 import type { Locale } from "@/lib/i18n/types";
 import { href, t } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  const fa = locale === "fa";
-  return {
-    title: fa ? "فروشگاه فایل دیجیتال و لایسنس" : "Digital files & licensing",
-    description: fa
-      ? "خرید آثار دیجیتال با لایسنس شفاف، دانلود امن، گواهی PDF و نسخه آزمایشی درگاه پرداخت."
-      : "Buy digital works with clear licensing, secure downloads, PDF certificates and a test gateway.",
-  };
+  return getEditableRouteMetadata(
+    "/marketplace",
+    locale,
+    locale === "fa" ? "فروشگاه فایل دیجیتال و لایسنس" : "Digital files & licensing",
+  );
 }
 
 const PILLARS = [

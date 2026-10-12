@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AssetDetail, type AssetDetailData } from "@/components/marketplace/AssetDetail";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
-import { getAssets, getAssetBySlug } from "@/lib/marketplace/assets";
+import { artistCanPublishAsset, getAssets, getAssetBySlug } from "@/lib/marketplace/assets";
 import { assetColourways, assetDeliverables } from "@/lib/marketplace/colourways";
 import { DELIVERABLE_FORMATS, isDeliverableFormatId } from "@/lib/marketplace/formats";
 import type { Locale } from "@/lib/i18n/types";
@@ -13,10 +13,15 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale; slug: string }> }): Promise<Metadata> {
   const { locale, slug } = await params;
   const asset = await getAssetBySlug(slug);
-  if (!asset) return { title: locale === "fa" ? "اثر یافت نشد" : "Work not found" };
+  if (
+    !asset
+    || (asset.status !== "approved" && asset.status !== "sold_exclusive")
+    || !(await artistCanPublishAsset(asset))
+  ) return { title: locale === "fa" ? "اثر یافت نشد" : "Work not found" };
   return {
     title: t(asset.title, locale),
     description: t(asset.description, locale)?.slice(0, 180),
+    alternates: { canonical: `/${locale}/marketplace/${slug}` },
     openGraph: asset.previewKey ? { images: [{ url: `/api/marketplace/media?key=${encodeURIComponent(asset.previewKey)}` }] } : undefined,
   };
 }
@@ -26,7 +31,11 @@ export default async function MarketplaceAssetPage({ params }: { params: Promise
   const fa = locale === "fa";
 
   const asset = await getAssetBySlug(slug);
-  if (!asset || (asset.status !== "approved" && asset.status !== "sold_exclusive")) notFound();
+  if (
+    !asset
+    || (asset.status !== "approved" && asset.status !== "sold_exclusive")
+    || !(await artistCanPublishAsset(asset))
+  ) notFound();
 
   const { getContent } = await import("@/lib/data/store");
   const content = await getContent().catch(() => null);

@@ -7,14 +7,13 @@ import { enrichProduct, getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { href, t } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  const site = await getSite();
-  const m = site.seo.find((s) => s.path === "/shop");
-  return { title: m ? { absolute: t(m.title, locale) } : dictionaries[locale].nav.products, description: m ? t(m.description, locale) : undefined };
+  return getEditableRouteMetadata("/shop", locale, dictionaries[locale].nav.products);
 }
 
 export default async function ShopPage({ params }: { params: Promise<{ locale: Locale }> }) {

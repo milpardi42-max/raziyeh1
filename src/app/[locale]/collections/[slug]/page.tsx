@@ -21,7 +21,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
   const c = site.collections.find((x) => x.slug === slug);
-  return c ? { title: t(c.title, locale), description: t(c.description, locale) } : {};
+  return c ? {
+    title: t(c.title, locale),
+    description: t(c.description, locale),
+    alternates: { canonical: `/${locale}/collections/${slug}` },
+  } : {};
 }
 export default async function CollectionPage({ params }: Props) {
   const { locale, slug } = await params;

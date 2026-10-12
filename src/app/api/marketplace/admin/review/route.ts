@@ -1,4 +1,4 @@
-import { getReviewQueue, approveAsset, rejectAsset, delistAsset, relistAsset, regenerateDerivatives, rescanAsset, purgeAsset } from "@/lib/marketplace/admin";
+import { getReviewQueue, getManagedAssets, approveAsset, rejectAsset, delistAsset, relistAsset, regenerateDerivatives, rescanAsset, purgeAsset } from "@/lib/marketplace/admin";
 import { sendReviewNotice } from "@/lib/marketplace/email";
 import { fail, json, readJson, requireAdmin } from "@/lib/marketplace/guard";
 import { assetColourways, assetFormatIds, deliveryBytes } from "@/lib/marketplace/colourways";
@@ -14,6 +14,10 @@ export async function GET(request: Request) {
   if ("response" in auth) return auth.response;
 
   const url = new URL(request.url);
+  if (url.searchParams.get("view") === "assets") {
+    const assets = await getManagedAssets();
+    return json({ ok: true, total: assets.length, items: assets });
+  }
   const queue = await getReviewQueue();
   const limit = Number(url.searchParams.get("limit") ?? 50);
 
@@ -119,7 +123,10 @@ export async function POST(request: Request) {
     }
     case "relist": {
       const asset = await relistAsset(body.assetId);
-      if (!asset) return fail("not_found", 404);
+      if (!asset) {
+        const exists = (await getManagedAssets()).some((item) => item.id === body.assetId);
+        return exists ? fail("not_relistable", 409) : fail("not_found", 404);
+      }
       return json({ ok: true, asset: { id: asset.id, visibility: asset.visibility } });
     }
     case "rescan": {
@@ -133,8 +140,11 @@ export async function POST(request: Request) {
       return json({ ok: true, media: { preview: asset.previewKey, mockups: asset.mockups.length, seamless: asset.seamless } });
     }
     case "purge": {
-      const removed = await purgeAsset(body.assetId);
-      return json({ ok: removed });
+      const result = await purgeAsset(body.assetId);
+      if (!result.ok && result.reason === "not_found") return fail("not_found", 404);
+      if (!result.ok && result.reason === "referenced") return fail("asset_referenced", 409, { references: result.references });
+      if (!result.ok) return fail("purge_cleanup_failed", 502);
+      return json({ ok: true });
     }
     default:
       return fail("unknown_action");

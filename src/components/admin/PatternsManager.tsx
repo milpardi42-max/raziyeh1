@@ -11,7 +11,10 @@ import {
   Grid3X3,
   LayoutList,
   Palette,
+  Pencil,
+  Plus,
   Search,
+  Trash2,
   Sparkles,
   Star,
   Tag,
@@ -22,6 +25,8 @@ import {
 } from "lucide-react";
 import { cn, href, t } from "@/lib/utils";
 import type { Pattern, Category, Artist, SiteContent } from "@/lib/types";
+import { PatternEditor } from "@/components/admin/PatternEditor";
+import { getPatternReferenceCounts, hasCatalogReferences } from "@/lib/catalog-references";
 
 /* ─── helpers ─── */
 function farsiNum(n: number) {
@@ -61,12 +66,16 @@ function PatternRow({
   artist,
   category,
   onChange,
+  onEdit,
+  onDelete,
   viewHref,
 }: {
   pattern: Pattern;
   artist: Artist | null;
   category: Category | null;
   onChange: (updated: Pattern) => void;
+  onEdit: () => void;
+  onDelete: () => void;
   viewHref: string;
 }) {
   const toggle = (f: FlagKey) => onChange({ ...pattern, [f]: !pattern[f] });
@@ -154,15 +163,17 @@ function PatternRow({
         })}
       </div>
 
-      {/* آیکون مشاهده */}
-      <Link
-        href={viewHref}
-        target="_blank"
-        className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-background-secondary hover:text-foreground transition-colors"
-        title="مشاهده در سایت"
-      >
-        <Eye className="h-4 w-4" />
-      </Link>
+      <div className="flex shrink-0 items-center gap-1">
+        <Link href={viewHref} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-background-secondary hover:text-foreground" title="مشاهده در سایت">
+          <Eye className="h-4 w-4" />
+        </Link>
+        <button type="button" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-background-secondary hover:text-foreground" title="ویرایش پترن" aria-label={`ویرایش ${t(pattern.title, "fa")}`}>
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-red-50 hover:text-red-600" title="حذف پترن" aria-label={`حذف ${t(pattern.title, "fa")}`}>
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
     </li>
   );
 }
@@ -173,12 +184,16 @@ function PatternGridCard({
   artist,
   category,
   onChange,
+  onEdit,
+  onDelete,
   viewHref,
 }: {
   pattern: Pattern;
   artist: Artist | null;
   category: Category | null;
   onChange: (updated: Pattern) => void;
+  onEdit: () => void;
+  onDelete: () => void;
   viewHref: string;
 }) {
   const toggle = (f: FlagKey) => onChange({ ...pattern, [f]: !pattern[f] });
@@ -203,7 +218,7 @@ function PatternGridCard({
           </div>
         )}
         {/* badge ها */}
-        <div className="absolute inset-x-2 top-2 flex flex-wrap gap-1">
+        <div className="absolute inset-x-2 top-11 flex flex-wrap gap-1">
           {activeFlags.map((f) => {
             const m = FLAG_META[f];
             return (
@@ -212,6 +227,14 @@ function PatternGridCard({
               </span>
             );
           })}
+        </div>
+        <div className="absolute left-2 top-2 flex gap-1">
+          <button type="button" onClick={onEdit} title="ویرایش پترن" aria-label={`ویرایش ${t(pattern.title, "fa")}`} className="flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-foreground shadow-sm hover:bg-white">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={onDelete} title="حذف پترن" aria-label={`حذف ${t(pattern.title, "fa")}`} className="flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-red-600 shadow-sm hover:bg-red-50">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
         {/* دکمه مشاهده */}
         <Link
@@ -350,6 +373,20 @@ function CategoryBreakdown({
   );
 }
 
+function createBlankPattern(categoryId: string): Pattern {
+  const id = `pattern-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    id, sku: "", slug: "",
+    title: { fa: "", en: "" }, description: { fa: "", en: "" },
+    image: "", gallery: [], categoryId, spaceIds: [], artistId: null,
+    price: { fa: 0, en: 0 },
+    specs: { repeat: { fa: "", en: "" }, dpi: "", formats: "", colors: 0, scale: { fa: "", en: "" } },
+    palette: [], colorways: undefined, tags: [],
+    featured: false, trending: false, bestSeller: false, isNew: true,
+    createdAt: new Date().toISOString().slice(0, 10), likes: 0,
+  };
+}
+
 /* ════════════════════════════════════════════════
    کامپوننت اصلی PatternsManager
    ════════════════════════════════════════════════ */
@@ -367,6 +404,7 @@ export function PatternsManager({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortKey, setSortKey] = useState<"date" | "name" | "likes">("date");
   const [sortAsc, setSortAsc] = useState(false);
+  const [editTarget, setEditTarget] = useState<Pattern | null>(null);
 
   /* map lookup */
   const artistMap = useMemo(
@@ -420,6 +458,30 @@ export function PatternsManager({
     update({ patterns: data.patterns.map((p) => (p.id === updated.id ? updated : p)) });
   };
 
+  const savePattern = (updated: Pattern) => {
+    const exists = data.patterns.some((pattern) => pattern.id === updated.id);
+    update({ patterns: exists
+      ? data.patterns.map((pattern) => pattern.id === updated.id ? updated : pattern)
+      : [...data.patterns, updated] });
+    setEditTarget(null);
+  };
+
+  const removePattern = (pattern: Pattern) => {
+    const references = getPatternReferenceCounts(data, pattern.id);
+    if (hasCatalogReferences(references)) {
+      const details = [
+        [references.products, "محصول"],
+        [references.collections, "مجموعه"],
+        [references.portfolios, "پورتفولیو"],
+        [references.education, "محتوای آکادمی"],
+      ].filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`).join("، ");
+      alert(`این پترن در ${details} استفاده شده است؛ ابتدا ارجاع‌ها را اصلاح کنید.`);
+      return;
+    }
+    if (!confirm(`پترن «${t(pattern.title, "fa")}» حذف شود؟`)) return;
+    update({ patterns: data.patterns.filter((item) => item.id !== pattern.id) });
+  };
+
   const flagFilters: { id: FlagKey | "all" | "site" | "artist"; label: string; icon: React.ReactNode }[] = [
     { id: "all", label: "همه", icon: <Grid3X3 className="h-3.5 w-3.5" /> },
     { id: "featured", label: "منتخب", icon: <Star className="h-3.5 w-3.5" /> },
@@ -432,18 +494,35 @@ export function PatternsManager({
 
   return (
     <div className="space-y-5">
+      {editTarget && (
+        <PatternEditor
+          key={editTarget.id}
+          pattern={editTarget}
+          isNew={!data.patterns.some((pattern) => pattern.id === editTarget.id)}
+          patterns={data.patterns}
+          categories={data.categories}
+          artists={data.artists}
+          spaces={data.spaces}
+          locale={locale}
+          onSave={savePattern}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
 
       {/* ── عنوان ── */}
-      <div>
-        <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <Palette className="h-4 w-4" />
-          </span>
-          پترن‌ها
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          مدیریت همه پترن‌های سایت — آتلیه رزی، طراحان و کاربران
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <Palette className="h-4 w-4" />
+            </span>
+            پترن‌ها
+          </h1>
+          <p className="mt-1 text-sm text-muted">مدیریت مشخصات، رسانه‌ها، ارتباط‌ها و پرچم‌های همه پترن‌ها</p>
+        </div>
+        <button type="button" onClick={() => setEditTarget(createBlankPattern(data.categories[0]?.id ?? ""))} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1e2230] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a3045]">
+          <Plus className="h-4 w-4" />پترن جدید
+        </button>
       </div>
 
       {/* ── کارت‌های آمار ── */}
@@ -630,6 +709,8 @@ export function PatternsManager({
                   artist={artistMap[p.artistId ?? ""] ?? null}
                   category={categoryMap[p.categoryId] ?? null}
                   onChange={onPatternChange}
+                  onEdit={() => setEditTarget(p)}
+                  onDelete={() => removePattern(p)}
                   viewHref={href(locale, `/patterns/${p.slug}`)}
                 />
               ))}
@@ -643,6 +724,8 @@ export function PatternsManager({
                   artist={artistMap[p.artistId ?? ""] ?? null}
                   category={categoryMap[p.categoryId] ?? null}
                   onChange={onPatternChange}
+                  onEdit={() => setEditTarget(p)}
+                  onDelete={() => removePattern(p)}
                   viewHref={href(locale, `/patterns/${p.slug}`)}
                 />
               ))}

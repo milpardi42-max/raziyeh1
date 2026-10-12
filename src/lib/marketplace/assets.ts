@@ -15,6 +15,7 @@ import { scanBuffer, sha256 } from "./scanner";
 import { WATERMARK_LINES, buildDerivatives, cornerTagFor, readImageSize, renderColourwayPreview } from "./media";
 import { detectFormat, formatById, formatStoredMime, minUploadBytes, verifyFileSignature, type ExportFormatId } from "./formats";
 import { DEFAULT_COLOURWAY_ID, sanitizeHex } from "./colourways";
+import { getPublicArtistIds, isPublicArtistId } from "@/lib/artist/access";
 import { ensureMarketplaceSeed } from "./seed";
 import { refundPrice } from "./royalty";
 import type { Localized } from "@/lib/i18n/types";
@@ -107,6 +108,11 @@ export function isPurchasable(asset: Asset): boolean {
   return asset.status === "approved" && asset.visibility === "public" && asset.tiers.some((tier) => tier.enabled);
 }
 
+/** A marketplace work cannot be public while its linked artist is awaiting approval. */
+export async function artistCanPublishAsset(asset: Pick<Asset, "artistId">): Promise<boolean> {
+  return isPublicArtistId(asset.artistId);
+}
+
 export function filterAssets(assets: Asset[], query: AssetQuery = {}): Asset[] {
   const statuses = query.status ? (Array.isArray(query.status) ? query.status : [query.status]) : null;
   const needle = query.search?.trim().toLowerCase();
@@ -150,8 +156,12 @@ export async function listAssets(query: AssetQuery = {}): Promise<Asset[]> {
 
 /** Public catalogue — used by the storefront pages. */
 export async function listPublicAssets(limit?: number): Promise<Asset[]> {
-  const assets = await listAssets({ purchasable: true });
-  return limit ? assets.slice(0, limit) : assets;
+  const [assets, publicArtistIds] = await Promise.all([
+    listAssets({ purchasable: true }),
+    getPublicArtistIds(),
+  ]);
+  const published = assets.filter((asset) => !asset.artistId || publicArtistIds.has(asset.artistId));
+  return limit ? published.slice(0, limit) : published;
 }
 
 export async function assetsByArtist(artistId: string): Promise<Asset[]> {
@@ -182,17 +192,27 @@ export async function deleteAsset(id: string, options: { deleteObjects?: boolean
   const asset = await getAsset(id);
   if (!asset) return false;
 
+  if (options.deleteObjects !== false) {
+    const objectKeys = new Set([
+      asset.master.key,
+      asset.previewKey,
+      asset.tileKey,
+      ...asset.derivatives.map((file) => file.key),
+      ...asset.mockups.map((file) => file.key),
+      ...(asset.colourways ?? []).flatMap((colourway) => [
+        colourway.previewKey,
+        ...colourway.files.map((file) => file.key),
+      ]),
+    ].filter((key): key is string => Boolean(key)));
+    // Do not remove the catalog record if storage cleanup fails. The purge flow
+    // has already delisted the asset, so an incomplete retry cannot expose it.
+    await Promise.all([...objectKeys].map((key) => deleteObject(key)));
+  }
+
   await mutateCollection<Asset, void>(KEYS.assets, (assets) => ({
     next: assets.filter((item) => item.id !== id),
     result: undefined,
   }));
-
-  if (options.deleteObjects !== false) {
-    await deleteObject(asset.master.key).catch(() => undefined);
-    for (const file of [...asset.derivatives, ...asset.mockups]) {
-      await deleteObject(file.key).catch(() => undefined);
-    }
-  }
   return true;
 }
 
@@ -784,7 +804,10 @@ const DEFAULT_SETTINGS: MarketplaceSettings = {
 };
 
 export async function getSettings(): Promise<MarketplaceSettings> {
-  const stored = await readDoc<MarketplaceSettings>(KEYS.settings, DEFAULT_SETTINGS);
+  const stored = {
+    ...DEFAULT_SETTINGS,
+    ...(await readDoc<Partial<MarketplaceSettings>>(KEYS.settings, {})),
+  };
   const { getContent } = await import("@/lib/data/store");
   const financial = (await getContent()).financialConfig;
   if (!financial) return stored;
@@ -801,7 +824,13 @@ export async function getSettings(): Promise<MarketplaceSettings> {
 export async function saveSettings(patch: Partial<MarketplaceSettings>): Promise<MarketplaceSettings> {
   const current = await getSettings();
   const next = { ...current, ...patch };
-  await writeDoc(KEYS.settings, next);
+  // financialConfig in SiteContent is canonical for these shared active fields.
+  // Keep only marketplace-specific operational settings in this separate store.
+  await writeDoc(KEYS.settings, {
+    affiliateDiscountPct: next.affiliateDiscountPct,
+    autoApproveSeamless: next.autoApproveSeamless,
+    emailOnSale: next.emailOnSale,
+  });
   return next;
 }
 

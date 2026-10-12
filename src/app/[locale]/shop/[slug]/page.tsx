@@ -26,7 +26,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
   const p = site.products.find((x) => x.slug === slug);
-  return p ? { title: t(p.title, locale), description: t(p.description, locale) } : {};
+  return p ? {
+    title: t(p.title, locale),
+    description: t(p.description, locale),
+    alternates: { canonical: `/${locale}/shop/${slug}` },
+  } : {};
 }
 
 export default async function ProductPage({ params }: Props) {

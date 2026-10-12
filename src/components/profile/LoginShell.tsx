@@ -91,7 +91,7 @@ export function LoginShell({ locale, image, dict }: LoginShellProps) {
 
         {/* hero panel */}
         <div className="auth-card__hero auth-card__hero--login">
-          <Logo className="auth-card__hero-logo" />
+          <Logo variant="mark" size={32} className="auth-card__hero-logo" />
           <h2>{fa ? "تازه‌وارد هستید؟" : "New here?"}</h2>
           <p>{fa ? "ثبت‌نام کنید و پترن‌ها را کشف کنید." : "Create an account and start discovering patterns."}</p>
           <button type="button" onClick={goToSignup} className="auth-card__hero-btn" disabled={isAutoFlow}>
@@ -105,7 +105,7 @@ export function LoginShell({ locale, image, dict }: LoginShellProps) {
             <div className="auth-card__auto-login">
               <div className="auth-card__auto-ring-wrap">
                 <div className="auth-card__auto-ring" />
-                <Logo className="auth-card__auto-logo" />
+                <Logo variant="mark" size={26} className="auth-card__auto-logo" />
               </div>
               <p className="auth-card__auto-label">
                 {fa

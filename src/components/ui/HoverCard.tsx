@@ -22,6 +22,7 @@ import { ColorwayDots, resolveColorways } from "@/components/product/ColorwayDot
 import { AddToCartButton } from "@/components/product/Actions";
 import { useProductColor } from "@/components/cards/ProductCard";
 import { cn, formatPrice, href, t } from "@/lib/utils";
+import { getProductColors, isProductVariantPurchasable } from "@/lib/product-variants";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import type { PatternCardData } from "@/components/cards/PatternCard";
@@ -213,8 +214,9 @@ function ProductPanel({
   imageRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { colorId, setColorId, color } = useProductColor(p);
+  const colors = getProductColors(p);
   const url = href(locale, `/shop/${p.slug}`);
-  const out = color.stock <= 0;
+  const out = !isProductVariantPurchasable(p, color.id);
 
   return (
     <>
@@ -245,12 +247,12 @@ function ProductPanel({
         </div>
 
         {/* colour thumbnails */}
-        {p.colors.length > 1 && (
+        {colors.length > 1 && (
           <div
             className="absolute bottom-3 inset-inline-start-3 flex gap-1.5"
             style={{ animation: "ra-hc-stagger 380ms 280ms var(--ease-out) both" }}
           >
-            {p.colors.slice(0, 5).map((c) => (
+            {colors.slice(0, 5).map((c) => (
               <button
                 key={c.id}
                 onClick={(e) => { e.stopPropagation(); setColorId(c.id); }}
@@ -306,7 +308,7 @@ function ProductPanel({
         {/* swatches */}
         <div className="mt-3.5 flex items-center gap-2.5">
           <ColorSwatches
-            options={p.colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))}
+            options={colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))}
             value={colorId}
             onChange={setColorId}
             size="md"

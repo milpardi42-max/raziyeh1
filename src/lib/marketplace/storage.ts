@@ -125,8 +125,8 @@ async function localBuffer(key: string) {
 async function localDelete(key: string) {
   try {
     await fs.unlink(localPath(key));
-  } catch {
-    /* already gone */
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 
@@ -192,7 +192,8 @@ async function s3Put(key: string, data: Buffer, contentType?: string) {
 
 async function s3Delete(key: string) {
   const { url, headers } = signedFetch(s3(), "DELETE", key);
-  await fetch(url, { method: "DELETE", headers }).catch(() => undefined);
+  const response = await fetch(url, { method: "DELETE", headers });
+  if (!response.ok) throw new Error(`s3_delete_${response.status}`);
 }
 
 async function s3Exists(key: string) {

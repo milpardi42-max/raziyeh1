@@ -13,6 +13,7 @@ import { QuickView } from "@/components/product/QuickView";
 import { useHoverCard } from "@/components/ui/HoverCard";
 import { cn, formatPrice, href, t } from "@/lib/utils";
 import type { Artist, Category, Pattern, Product } from "@/lib/types";
+import { getProductColor, getProductColors, hasProductVariants, isProductVariantPurchasable } from "@/lib/product-variants";
 
 export interface ProductCardData extends Product {
   artist: Artist | null;
@@ -21,8 +22,8 @@ export interface ProductCardData extends Product {
 }
 
 export function useProductColor(product: Product) {
-  const [colorId, setColorId] = useState(product.colors[0]?.id);
-  const color = useMemo(() => product.colors.find((c) => c.id === colorId) ?? product.colors[0], [product, colorId]);
+  const [colorId, setColorId] = useState(getProductColors(product)[0]?.id);
+  const color = useMemo(() => getProductColor(product, colorId), [product, colorId]);
   return { colorId, setColorId, color };
 }
 
@@ -33,8 +34,9 @@ export function ProductCard({ product, variant = "default", className, priority 
   const { onMouseEnter, onMouseLeave, onClick, portal } = useHoverCard({ kind: "product", product });
   const url = href(locale, `/shop/${product.slug}`);
   const siteOwned = !product.artistId;
-  const out = color.stock <= 0;
-  const swatches = product.colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }));
+  const hasVariants = hasProductVariants(product);
+  const out = !isProductVariantPurchasable(product, colorId);
+  const swatches = getProductColors(product).map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }));
 
   if (variant === "row") {
     return (
@@ -54,7 +56,7 @@ export function ProductCard({ product, variant = "default", className, priority 
             <p className="mt-1.5 line-clamp-1 text-caption text-foreground-secondary">{product.specs.map((s) => `${t(s.label, locale)}: ${t(s.value, locale)}`).join(" · ")}</p>
             <div className="mt-auto flex items-center justify-between gap-3 pt-2">
               <div className="flex items-center gap-2">
-                <ColorSwatches options={swatches} value={colorId} onChange={setColorId} size="sm" label={dict.common.color} />
+                {hasVariants && <ColorSwatches options={swatches} value={colorId} onChange={setColorId} size="sm" label={dict.common.color} />}
                 <span className="text-caption text-muted">{t(color.name, locale)}</span>
               </div>
               <AddToCartButton variant="icon" disabled={out} line={{ kind: "product", id: product.id, sku: product.sku, title: t(product.title, locale), image: color.image, price: product.price, colorName: t(color.name, locale), colorHex: color.hex, href: url }} />
@@ -125,7 +127,7 @@ export function ProductCard({ product, variant = "default", className, priority 
             ))}
           </dl>
           <div className="flex items-center justify-between gap-2 pt-0.5">
-            <ColorSwatches options={swatches} value={colorId} onChange={setColorId} size="sm" label={dict.common.color} />
+            {hasVariants && <ColorSwatches options={swatches} value={colorId} onChange={setColorId} size="sm" label={dict.common.color} />}
             <span className="truncate text-caption text-foreground-secondary">{t(color.name, locale)}</span>
           </div>
         </div>

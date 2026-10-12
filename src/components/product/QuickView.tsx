@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { AddToCartButton } from "./Actions";
 import { ColorSwatches } from "./ColorSwatches";
 import { ColorwayDots, resolveColorways } from "./ColorwayDots";
+import { getProductColors, hasProductVariants, isProductVariantPurchasable } from "@/lib/product-variants";
 
 type Item = { kind: "pattern"; pattern: PatternCardData } | { kind: "product"; product: ProductCardData };
 
@@ -88,6 +89,9 @@ function PatternQuick({ p }: { p: PatternCardData }) {
 function ProductQuick({ p }: { p: ProductCardData }) {
   const { locale, dict } = useLocale();
   const { colorId, setColorId, color } = useProductColor(p);
+  const colors = getProductColors(p);
+  const hasVariants = hasProductVariants(p);
+  const canBuy = isProductVariantPurchasable(p, color.id);
   const url = href(locale, `/shop/${p.slug}`);
   return (
     <div className="grid md:grid-cols-2">
@@ -100,7 +104,7 @@ function ProductQuick({ p }: { p: ProductCardData }) {
         <p className="mt-3 text-body text-foreground-secondary">{t(p.description, locale)}</p>
         <div className="mt-6">
           <p className="mb-2 text-caption text-foreground-secondary">{dict.common.color}: <span className="font-medium text-foreground">{t(color.name, locale)}</span></p>
-          <ColorSwatches options={p.colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))} value={colorId} onChange={setColorId} size="lg" label={dict.common.color} />
+          {hasVariants && <ColorSwatches options={colors.map((c) => ({ id: c.id, name: t(c.name, locale), hex: c.hex, stock: c.stock }))} value={colorId ?? ""} onChange={setColorId} size="lg" label={dict.common.color} />}
         </div>
         <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-border pt-5 text-sm">
           {p.specs.map((s) => <Row key={t(s.label, "en")} k={t(s.label, locale)} v={t(s.value, locale)} />)}
@@ -109,7 +113,7 @@ function ProductQuick({ p }: { p: ProductCardData }) {
           <span className="text-h3 font-semibold tabular">{formatPrice(p.price, locale)}</span>
           <div className="flex items-center gap-2">
             <Link href={url} className="inline-flex h-11 items-center gap-1 rounded-md border border-border px-4 text-sm hover:border-foreground">{dict.common.viewProduct}<ArrowUpRight className="h-4 w-4 rtl-flip" /></Link>
-            <AddToCartButton disabled={color.stock <= 0} className="h-11" line={{ kind: "product", id: p.id, sku: p.sku, title: t(p.title, locale), image: color.image, price: p.price, colorName: t(color.name, locale), colorHex: color.hex, href: url }} />
+            <AddToCartButton disabled={!canBuy} className="h-11" line={{ kind: "product", id: p.id, sku: p.sku, title: t(p.title, locale), image: color.image, price: p.price, colorName: t(color.name, locale), colorHex: color.hex, href: url }} />
           </div>
         </div>
       </div>

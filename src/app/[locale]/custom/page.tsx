@@ -7,12 +7,13 @@ import { getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { faNum, href } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  return { title: dictionaries[locale].nav.custom };
+  return getEditableRouteMetadata("/custom", locale, dictionaries[locale].nav.custom);
 }
 export default async function CustomPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAsset, getAssets } from "@/lib/marketplace/assets";
+import { getPublicArtistIds } from "@/lib/artist/access";
 import { assetIdFromKey, getStream, isPublicDerivedKey, signedMediaUrl } from "@/lib/marketplace/media-access";
 import { assetDerivedKeys } from "@/lib/marketplace/colourways";
 import { getSession } from "@/lib/auth";
@@ -36,7 +37,9 @@ export async function GET(request: Request) {
   const known = assetDerivedKeys(asset).has(key);
   if (!known) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
 
-  const published = asset.status === "approved" || asset.status === "sold_exclusive";
+  const publicArtistIds = await getPublicArtistIds();
+  const artistIsPublic = !asset.artistId || publicArtistIds.has(asset.artistId);
+  const published = artistIsPublic && (asset.status === "approved" || asset.status === "sold_exclusive");
   if (!published) {
     const session = await getSession();
     const isOwner = session?.id === asset.ownerUserId;
@@ -73,10 +76,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { assetIds?: string[] } | null;
   if (!body?.assetIds?.length) return NextResponse.json({ ok: true, media: {} });
-  const assets = await getAssets();
+  const [assets, publicArtistIds] = await Promise.all([getAssets(), getPublicArtistIds()]);
   const media = Object.fromEntries(
     assets
-      .filter((asset) => body.assetIds!.includes(asset.id))
+      .filter((asset) =>
+        body.assetIds!.includes(asset.id)
+        && (asset.status === "approved" || asset.status === "sold_exclusive")
+        && (!asset.artistId || publicArtistIds.has(asset.artistId)),
+      )
       .map((asset) => [
         asset.id,
         {

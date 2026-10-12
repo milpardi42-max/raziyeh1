@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { PageHero } from "@/components/ui/PageHero";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  return { title: dictionaries[locale].footer.returns };
+  return getEditableRouteMetadata("/returns", locale, dictionaries[locale].footer.returns);
 }
 export default async function ReturnsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;

@@ -1,6 +1,7 @@
 import "server-only";
 import type { AcademyReservation, CourseVideoFile, EducationItem, SiteContent } from "../types";
 import { effectiveLiveStatus } from "../academy-live";
+import { publicEducationItems } from "../academy/publication";
 import { getAllReservations } from "./reservations";
 
 /**
@@ -71,11 +72,12 @@ export function previewVideoOf(item: EducationItem | null | undefined): CourseVi
 }
 
 export function academyOverview(site: SiteContent, reservations: AcademyReservation[]): AcademyOverview {
-  const slugs = new Set(site.education.map((item) => item.slug));
+  const education = publicEducationItems(site.education);
+  const slugs = new Set(education.map((item) => item.slug));
   const active = reservations.filter((reservation) => reservation.status !== "cancelled" && slugs.has(reservation.eventSlug));
   const bySlug: Record<string, AcademyItemStats> = {};
 
-  for (const item of site.education) {
+  for (const item of education) {
     const registered = active.filter((reservation) => reservation.eventSlug === item.slug).length;
     const capacity = item.type === "course" ? 0 : item.liveEvent?.capacity ?? 0;
     bySlug[item.slug] = {
@@ -90,7 +92,7 @@ export function academyOverview(site: SiteContent, reservations: AcademyReservat
   }
 
   const instructors = new Map<string, AcademyInstructorStats>();
-  for (const item of site.education) {
+  for (const item of education) {
     const stats = instructors.get(item.authorId) ?? {
       authorId: item.authorId,
       items: 0,
@@ -107,16 +109,16 @@ export function academyOverview(site: SiteContent, reservations: AcademyReservat
     instructors.set(item.authorId, stats);
   }
 
-  const videoFiles = site.education.flatMap((item) => item.videoFiles ?? []);
-  const categoriesUsed = new Set(site.education.map((item) => item.categoryId));
+  const videoFiles = education.flatMap((item) => item.videoFiles ?? []);
+  const categoriesUsed = new Set(education.map((item) => item.categoryId));
 
   return {
-    items: site.education.length,
-    courses: site.education.filter((item) => item.type === "course").length,
-    workshops: site.education.filter((item) => item.type === "workshop").length,
-    webinars: site.education.filter((item) => item.type === "webinar").length,
-    lessons: site.education.reduce((sum, item) => sum + lessonCount(item), 0),
-    minutes: site.education.reduce((sum, item) => sum + lessonMinutes(item), 0),
+    items: education.length,
+    courses: education.filter((item) => item.type === "course").length,
+    workshops: education.filter((item) => item.type === "workshop").length,
+    webinars: education.filter((item) => item.type === "webinar").length,
+    lessons: education.reduce((sum, item) => sum + lessonCount(item), 0),
+    minutes: education.reduce((sum, item) => sum + lessonMinutes(item), 0),
     videos: videoFiles.length,
     freeVideos: videoFiles.filter((video) => video.free).length,
     filesizeBytes: videoFiles.reduce((sum, video) => sum + (video.sizeBytes ?? 0), 0),
@@ -124,8 +126,8 @@ export function academyOverview(site: SiteContent, reservations: AcademyReservat
     categories: categoriesUsed.size,
     enrollments: active.length,
     students: new Set(active.map((reservation) => reservation.email.trim().toLowerCase())).size,
-    upcomingEvents: site.education.filter((item) => effectiveLiveStatus(item.liveEvent) === "scheduled").length,
-    liveNow: site.education.filter((item) => effectiveLiveStatus(item.liveEvent) === "live").length,
+    upcomingEvents: education.filter((item) => effectiveLiveStatus(item.liveEvent) === "scheduled").length,
+    liveNow: education.filter((item) => effectiveLiveStatus(item.liveEvent) === "live").length,
     bySlug,
     instructorStats: [...instructors.values()].sort((a, b) => b.lessons - a.lessons || b.items - a.items),
   };

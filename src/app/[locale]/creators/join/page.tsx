@@ -8,12 +8,13 @@ import { getSite } from "@/lib/data/queries";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { href, t } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  return { title: dictionaries[locale].nav.becomeCreator };
+  return getEditableRouteMetadata("/creators/join", locale, dictionaries[locale].nav.becomeCreator);
 }
 
 export default async function JoinPage({ params }: { params: Promise<{ locale: Locale }> }) {
@@ -151,8 +152,8 @@ export default async function JoinPage({ params }: { params: Promise<{ locale: L
               </h2>
               <p className="mt-1 text-xs text-foreground-secondary">
                 {fa
-                  ? "با تکمیل این فرم، پروفایل شما در صفحه هنرمندان ثبت شده و بلافاصله به تب اقتصادی پنل هنرمند دسترسی پیدا خواهید کرد."
-                  : "Complete this form to create your directory listing and unlock your Pro Showcase tab."}
+                  ? "با ثبت این فرم، درخواست شما برای بررسی ادمین ارسال می‌شود. پروفایل عمومی و امکانات فروشندگی فقط پس از تأیید دستی فعال خواهند شد."
+                  : "Submit this form for administrator review. Your public profile and seller tools activate only after manual approval."}
               </p>
             </div>
 

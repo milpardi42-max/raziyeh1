@@ -49,18 +49,19 @@ export async function POST(request: Request) {
     reference: body.reference,
     note: body.note,
   });
-  if (!payout) return fail("not_found", 404);
+  if (!payout.ok) return payout.error === "not_found" ? fail("not_found", 404) : fail("invalid_payout_transition", 409);
+  const savedPayout = payout.payout;
 
-  const profile = await getPayoutProfile(payout.artistId);
-  if (profile) {
+  const profile = await getPayoutProfile(savedPayout.artistId);
+  if (profile && payout.statusChanged) {
     const { findUserById } = await import("@/lib/data/users");
     const { getAssets } = await import("@/lib/marketplace/assets");
     const assets = await getAssets();
-    const owner = assets.find((asset) => asset.artistId === payout.artistId)?.ownerUserId ?? null;
+    const owner = assets.find((asset) => asset.artistId === savedPayout.artistId)?.ownerUserId ?? null;
     const user = owner ? await findUserById(owner).catch(() => null) : null;
     if (user?.email) {
       await sendPayoutNotice({
-        payout,
+        payout: savedPayout,
         to: user.email,
         artistName: user.name,
         locale: "fa",
@@ -68,5 +69,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return json({ ok: true, payout });
+  return json({ ok: true, payout: savedPayout });
 }

@@ -27,7 +27,6 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
-  Sparkles,
   Store,
   Tag,
   TrendingUp,
@@ -295,6 +294,21 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
         </div>
       </div>
 
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-2xl border border-success/25 bg-success/5 p-4">
+          <Badge tone="success" className="shrink-0">تنظیم فعال</Badge>
+          <p className="text-xs leading-relaxed text-foreground-secondary">
+            مالیات بر ارزش افزوده، سهم پیش‌فرض هنرمند، پورسانت افیلیت و حداقل تسویه در محاسبات جاری فروش و تسویه استفاده می‌شوند.
+          </p>
+        </div>
+        <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/5 p-4">
+          <Badge tone="warning" className="shrink-0">سیاست ذخیره‌شده، غیرفعال</Badge>
+          <p className="text-xs leading-relaxed text-foreground-secondary">
+            کارمزد پروژهٔ مستقیم، تعرفه‌های اشتراک و آستانهٔ ارسال رایگان فعلاً مصرف‌کنندهٔ runtime ندارند. مقادیر موجود حفظ شده‌اند و فقط‌خواندنی‌اند؛ تغییری در هزینهٔ سفارش یا تسویه ایجاد نمی‌کنند.
+          </p>
+        </div>
+      </div>
+
       {/* ══ Top KPI Cards ══════════════════════════════════════════════ */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Default Commission */}
@@ -316,7 +330,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-soft space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-foreground-secondary">تعرفه اشتراک Artist Pro</span>
-            <Crown className="h-4 w-4 text-accent" />
+            <Badge tone="warning">غیرفعال</Badge>
           </div>
           <p className="font-display text-2xl font-bold text-foreground tabular">
             {formatPrice(config.subscriptionPricing.proMonthly, "fa")}
@@ -331,7 +345,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-soft space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-foreground-secondary">تعرفه اشتراک Studio VIP</span>
-            <Sparkles className="h-4 w-4 text-accent" />
+            <Badge tone="warning">غیرفعال</Badge>
           </div>
           <p className="font-display text-2xl font-bold text-foreground tabular">
             {formatPrice(config.subscriptionPricing.studioMonthly, "fa")}
@@ -477,8 +491,9 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
                     min="0"
                     max="50"
                     value={config.directCommissionPct}
-                    onChange={(e) => updateConfig({ directCommissionPct: Number(e.target.value) })}
-                    className="h-10 w-32 rounded-xl border border-border bg-background px-3 text-xs font-bold focus:border-accent focus:outline-none"
+                    disabled
+                    aria-label="نرخ سیاستی پروژه مستقیم؛ در حال حاضر غیرفعال"
+                    className="h-10 w-32 cursor-not-allowed rounded-xl border border-border bg-background px-3 text-xs font-bold opacity-60"
                   />
                   <span className="text-xs text-foreground-secondary">
                     {config.directCommissionPct === 0 ? "نرخ ذخیره‌شده؛ پرداخت مستقیم خدمات فعال نیست." : `نرخ سیاستی ${faNum(config.directCommissionPct)}٪؛ فعلاً از سفارش آنلاین کسر نمی‌شود.`}
@@ -522,7 +537,11 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
       {/* 2. ARTIST PRO & VIP SUBSCRIPTION PRICING                        */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       {activeTab === "subscriptions" && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <fieldset
+          disabled
+          aria-label="تعرفه‌های اشتراک ذخیره‌شده و غیرفعال"
+          className="grid min-w-0 gap-6 border-0 p-0 md:grid-cols-2"
+        >
           {/* Plan: Artist Pro */}
           <div className="rounded-3xl border-2 border-accent bg-surface p-6 shadow-soft space-y-5">
             <div className="flex items-center justify-between">
@@ -533,7 +552,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
               <Badge tone="accent">پیشنهاد اصلی</Badge>
             </div>
             <p className="text-xs text-foreground-secondary leading-relaxed">
-              این تعرفه‌ها ذخیره می‌شوند، اما در حال حاضر خرید اشتراک Pro/Studio و پرداخت آن در سایت فعال نیست؛ تغییر این ارقام هزینه‌ای از کاربر دریافت نمی‌کند.
+              تعرفهٔ ذخیره‌شده و غیرفعال: خرید اشتراک Pro/Studio و پرداخت آن در سایت فعال نیست. ارقام فعلی حفظ شده‌اند، اما قابل ویرایش نیستند و هزینه‌ای از کاربر دریافت نمی‌شود.
             </p>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -637,7 +656,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
               <Badge tone="neutral">استودیو و اساتید</Badge>
             </div>
             <p className="text-xs text-foreground-secondary leading-relaxed">
-              تعرفه اشتراک اساتید برگزیده و استودیوها با امکان معرفی اختصاصی به پروژه‌های بزرگ معماری و هتل‌سازی.
+              این تعرفه نیز فقط به‌صورت سیاست ذخیره‌شده نگهداری می‌شود؛ خرید و پرداخت اشتراک استودیو در سایت فعال نیست و مقدار فعلی قابل ویرایش نیست.
             </p>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -730,7 +749,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
               </div>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -1071,7 +1090,7 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
                 سقف ارسال رایگان سفارش‌های فیزیکی
               </h3>
               <p className="mt-1 text-xs text-foreground-secondary">
-                این آستانه فعلاً فقط در تنظیمات ذخیره می‌شود؛ محاسبهٔ هزینهٔ ارسال در checkout هنوز پیاده‌سازی نشده است.
+                این آستانه فقط به‌عنوان سیاست غیرفعال ذخیره شده و فعلاً قابل ویرایش نیست؛ محاسبهٔ هزینهٔ ارسال در checkout هنوز پیاده‌سازی نشده است.
               </p>
             </div>
 
@@ -1082,8 +1101,9 @@ export function FinancialManager({ data, update, onSave }: FinancialManagerProps
                   type="number"
                   step="100000"
                   value={config.freeShippingThresholdFa}
-                  onChange={(e) => updateConfig({ freeShippingThresholdFa: Number(e.target.value) })}
-                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-bold focus:border-accent focus:outline-none"
+                  disabled
+                  aria-label="آستانهٔ ارسال رایگان؛ فقط سیاست ذخیره‌شده و غیرفعال"
+                  className="h-10 w-full cursor-not-allowed rounded-xl border border-border bg-background px-3 text-xs font-bold opacity-60"
                 />
                 <span className="text-[11px] text-muted mt-1 block">
                   {faNum(config.freeShippingThresholdFa.toLocaleString("fa-IR"))} تومان

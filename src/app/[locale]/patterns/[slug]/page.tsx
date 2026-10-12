@@ -25,7 +25,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const site = await getSite();
   const p = site.patterns.find((x) => x.slug === slug);
-  return p ? { title: t(p.title, locale), description: t(p.description, locale) } : {};
+  return p ? {
+    title: t(p.title, locale),
+    description: t(p.description, locale),
+    alternates: { canonical: `/${locale}/patterns/${slug}` },
+  } : {};
 }
 
 export default async function PatternPage({ params }: Props) {

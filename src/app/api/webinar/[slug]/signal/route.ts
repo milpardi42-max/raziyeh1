@@ -11,6 +11,7 @@ import { clientIp, recordAttempt, retryAfterSeconds, tooManyAttempts } from "@/l
 import { getContent, getContentWithEtag, saveContent } from "@/lib/data/store";
 import { createReservation, getAllReservations } from "@/lib/data/reservations";
 import { effectiveLiveStatus, hasGrantedReservation, isFreePrice, safeExternalHttpsUrl } from "@/lib/academy-live";
+import { isPublishedEducation } from "@/lib/academy/publication";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -95,9 +96,13 @@ function error(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, withNoStore({ status }));
 }
 
-async function getLiveEvent(slug: string) {
+async function getLiveEvent(slug: string, allowUnpublished = false) {
   const content = await getContent();
-  const event = content.education.find((item) => item.slug === slug && (item.type === "workshop" || item.type === "webinar"));
+  const event = content.education.find((item) =>
+    item.slug === slug
+    && (item.type === "workshop" || item.type === "webinar")
+    && (allowUnpublished || isPublishedEducation(item)),
+  );
   return event?.liveEvent ? { item: event, config: event.liveEvent } : null;
 }
 
@@ -164,6 +169,8 @@ async function iceServersResponse(request: Request, slug: string) {
   if (client === "broadcaster") {
     if (!session || session.role !== "admin") return error("unauthorized", 401);
   } else {
+    const event = await getLiveEvent(slug);
+    if (!event) return error("event_not_found", 404);
     const room = rooms.get(slug);
     if (!VIEWER_ID_PATTERN.test(viewerId) || !room || !attendeeFor(room, viewerId)) return error("attendee_required", 401);
   }
@@ -269,7 +276,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   if (["offer", "ice-broadcaster", "end", "start"].includes(type)) {
     const session = await getAdminSession();
     if (!session || session.role !== "admin") return error("unauthorized", 401);
-    const found = await getLiveEvent(slug);
+    const found = await getLiveEvent(slug, true);
     if (!found) return error("event_not_found", 404);
     const room = getOrCreateRoom(slug);
 
@@ -334,6 +341,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   }
 
   if (["register", "join", "answer", "ice-viewer", "chat", "qa"].includes(type)) {
+    const publicEvent = await getLiveEvent(slug);
+    if (!publicEvent) return error("event_not_found", 404);
     const viewerId = typeof body.viewerId === "string" ? body.viewerId : "";
     if (!VIEWER_ID_PATTERN.test(viewerId)) return error("invalid_viewer_id", 400);
     const room = getOrCreateRoom(slug);
@@ -344,9 +353,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       const submittedEmail = typeof body.email === "string" ? body.email.trim().slice(0, 200).toLowerCase() : "";
       if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail)) return error("invalid_attendee", 400);
 
-      const found = await getLiveEvent(slug);
-      if (!found) return error("event_not_found", 404);
-      const { item, config } = found;
+      const { item, config } = publicEvent;
       const status = effectiveLiveStatus(config);
       if (status === "ended" || status === "cancelled") return error("event_closed", 409);
       if (!config.isOnline) return error("event_not_online", 409);
@@ -431,9 +438,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       return NextResponse.json({ ok: true }, withNoStore());
     }
     if (type === "chat") {
-      const event = await getLiveEvent(slug);
-      if (!event) return error("event_not_found", 404);
-      if (event.config.webinarStream?.chatEnabled === false) return error("chat_disabled", 409);
+      if (publicEvent.config.webinarStream?.chatEnabled === false) return error("chat_disabled", 409);
       const rateKey = `chat-message:${slug}:${viewerId}`;
       if (tooManyAttempts(rateKey)) return error("too_many_messages", 429);
       recordAttempt(rateKey);
@@ -444,9 +449,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       return NextResponse.json({ ok: true }, withNoStore());
     }
     if (type === "qa") {
-      const event = await getLiveEvent(slug);
-      if (!event) return error("event_not_found", 404);
-      if (event.config.webinarStream?.qaEnabled === false) return error("qa_disabled", 409);
+      if (publicEvent.config.webinarStream?.qaEnabled === false) return error("qa_disabled", 409);
       const rateKey = `chat-message:${slug}:${viewerId}`;
       if (tooManyAttempts(rateKey)) return error("too_many_messages", 429);
       recordAttempt(rateKey);

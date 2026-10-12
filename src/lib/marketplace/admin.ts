@@ -1,6 +1,6 @@
 import "server-only";
 import { capabilities, storageProvider, zarinpalMerchantId, stripeSecret, mailProvider, clamavHost } from "./config";
-import { filterAssets, getAssets, saveAsset, setAssetStatus, setAssetVisibility, updateAssetTiers, getSettings, saveSettings } from "./assets";
+import { filterAssets, getAssets, getUploadSessions, saveAsset, setAssetStatus, setAssetVisibility, updateAssetTiers, getSettings, saveSettings } from "./assets";
 import { deleteObject } from "./storage";
 import { getOrders, getLicenses, setOrderStatus, refundOrder, fulfillOrder } from "./orders";
 import { listPayouts } from "./payouts";
@@ -73,6 +73,45 @@ export async function getReviewQueue(): Promise<ReviewQueueItem[]> {
   });
 }
 
+export interface ManagedAssetItem {
+  id: string;
+  slug: string;
+  title: Localized;
+  status: Asset["status"];
+  visibility: Asset["visibility"];
+  kind: Asset["kind"];
+  updatedAt: string;
+  artistName: Localized;
+  ownerEmail: string | null;
+}
+
+/** All marketplace assets for admin visibility and delist/relist operations. */
+export async function getManagedAssets(): Promise<ManagedAssetItem[]> {
+  const [assets, users] = await Promise.all([
+    getAssets(),
+    import("@/lib/data/users").then((module) => module.getAllUsers()),
+  ]);
+  const { getContent } = await import("@/lib/data/store");
+  const content = await getContent().catch(() => null);
+  const artists = new Map((content?.artists ?? []).map((artist) => [artist.id, artist]));
+  const owners = new Map(users.map((user) => [user.id, user]));
+
+  return assets
+    .slice()
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((asset) => ({
+      id: asset.id,
+      slug: asset.slug,
+      title: asset.title,
+      status: asset.status,
+      visibility: asset.visibility,
+      kind: asset.kind,
+      updatedAt: asset.updatedAt,
+      artistName: artists.get(asset.artistId ?? "")?.name ?? { fa: "بدون هنرمند", en: "Unattributed" },
+      ownerEmail: owners.get(asset.ownerUserId ?? "")?.email ?? null,
+    }));
+}
+
 export interface ApproveOptions {
   adminEmail: string;
   /** Publish immediately (default true) or keep it as a private draft. */
@@ -101,8 +140,9 @@ export async function delistAsset(assetId: string): Promise<Asset | null> {
 }
 
 export async function relistAsset(assetId: string): Promise<Asset | null> {
-  const asset = await setAssetVisibility(assetId, "public");
-  return asset;
+  const asset = (await getAssets()).find((item) => item.id === assetId);
+  if (!asset || asset.status !== "approved") return null;
+  return setAssetVisibility(assetId, "public");
 }
 
 export async function editAssetBasics(
@@ -115,13 +155,40 @@ export async function editAssetBasics(
   return saveAsset({ ...asset, ...patch });
 }
 
-/** Permanently removes an asset plus its stored objects. */
-export async function purgeAsset(assetId: string): Promise<boolean> {
-  const assets = await getAssets();
-  const asset = assets.find((item) => item.id === assetId);
-  if (!asset) return false;
+export type PurgeAssetResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "cleanup_failed" }
+  | { ok: false; reason: "referenced"; references: { orders: number; licenses: number; openUploads: number } };
+
+/**
+ * Permanently removes an unreferenced asset and all of its stored objects.
+ * Delisting happens first so it cannot be newly purchased while the references
+ * are checked. Historical order/license rows and active uploads are retained.
+ */
+export async function purgeAsset(assetId: string): Promise<PurgeAssetResult> {
+  const asset = (await getAssets()).find((item) => item.id === assetId);
+  if (!asset) return { ok: false, reason: "not_found" };
+
+  if (asset.visibility !== "private") await setAssetVisibility(assetId, "private");
+
+  const [orders, licenses, uploads] = await Promise.all([getOrders(), getLicenses(), getUploadSessions()]);
+  const references = {
+    orders: orders.filter((order) => order.lines.some((line) => line.assetId === assetId)).length,
+    licenses: licenses.filter((license) => license.assetId === assetId).length,
+    openUploads: uploads.filter((session) => session.status === "open" && session.attachToAssetId === assetId).length,
+  };
+  if (references.orders || references.licenses || references.openUploads) {
+    return { ok: false, reason: "referenced", references };
+  }
+
   const { deleteAsset } = await import("./assets");
-  return deleteAsset(assetId);
+  try {
+    const removed = await deleteAsset(assetId);
+    return removed ? { ok: true } : { ok: false, reason: "not_found" };
+  } catch (error) {
+    console.error("[marketplace] asset purge cleanup failed:", error);
+    return { ok: false, reason: "cleanup_failed" };
+  }
 }
 
 /** Rebuilds previews/mockups for an asset using the current watermark settings. */
@@ -330,10 +397,15 @@ export async function updateSettings(patch: Parameters<typeof saveSettings>[0]) 
 
 /** Frees storage of a rejected asset without deleting the record. */
 export async function purgeAssetObjects(asset: Asset): Promise<void> {
-  await deleteObject(asset.master.key).catch(() => undefined);
-  for (const file of [...asset.derivatives, ...asset.mockups]) {
-    await deleteObject(file.key).catch(() => undefined);
-  }
+  const objectKeys = new Set([
+    asset.master.key,
+    asset.previewKey,
+    asset.tileKey,
+    ...asset.derivatives.map((file) => file.key),
+    ...asset.mockups.map((file) => file.key),
+    ...(asset.colourways ?? []).flatMap((colourway) => [colourway.previewKey, ...colourway.files.map((file) => file.key)]),
+  ].filter((key): key is string => Boolean(key)));
+  await Promise.all([...objectKeys].map((key) => deleteObject(key).catch(() => undefined)));
 }
 
 export type { AssetStatus, OutboxMessage };

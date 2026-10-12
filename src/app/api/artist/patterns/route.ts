@@ -1,17 +1,33 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getContent, saveContent } from "@/lib/data/store";
+import { requireArtistOrAdmin as requireApprovedArtistOrAdmin } from "@/lib/marketplace/guard";
+import { getContent, mutateCollection } from "@/lib/data/store";
 import { withNoStore } from "@/lib/http";
 import type { Pattern, Product } from "@/lib/types";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
+function withContentEtag(response: NextResponse, etag: string) {
+  response.headers.set("ETag", `"${etag}"`);
+  return response;
+}
+
+function mutationErrorResponse(error: unknown, operation: string) {
+  const code = error instanceof Error ? error.message : "";
+  if (code === "invalid_category") {
+    return NextResponse.json({ ok: false, error: code }, withNoStore({ status: 400 }));
+  }
+  if (code === "not_found") {
+    return NextResponse.json({ ok: false, error: code }, withNoStore({ status: 404 }));
+  }
+  if (code === "forbidden") return unauthorized();
+
+  console.error(`Failed to ${operation} artist pattern data`, error);
+  return NextResponse.json({ ok: false, error: "mutation_failed" }, withNoStore({ status: 500 }));
+}
+
 function requireArtist() {
-  return getSession().then((s) => {
-    if (!s || (s.role !== "artist" && s.role !== "admin")) return null;
-    return s;
-  });
+  return requireApprovedArtistOrAdmin();
 }
 
 function unauthorized() {
@@ -43,8 +59,9 @@ function makeUniqueSlug(base: string, existing: Array<{ slug: string }>) {
 
 /** GET /api/artist/patterns — returns patterns belonging to the logged-in artist */
 export async function GET() {
-  const session = await requireArtist();
-  if (!session) return unauthorized();
+  const auth = await requireArtist();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const content = await getContent();
 
@@ -71,148 +88,200 @@ export async function GET() {
 
 /** POST /api/artist/patterns — create a new pattern */
 export async function POST(req: Request) {
-  const session = await requireArtist();
-  if (!session) return unauthorized();
+  const auth = await requireArtist();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> & { _type?: "pattern" | "product" } | null;
   if (!body) return NextResponse.json({ ok: false, error: "invalid_payload" }, withNoStore({ status: 400 }));
 
   const artistId = session.role === "admin" ? ((body.artistId as string | null) ?? null) : (session.artistId ?? null);
-  const content = await getContent();
-  const categoryId = (body.categoryId as string | null) ?? (content.categories[0]?.id ?? "");
-
-  if (!categoryId || !content.categories.some((c) => c.id === categoryId)) {
-    return NextResponse.json({ ok: false, error: "invalid_category" }, withNoStore({ status: 400 }));
-  }
+  const requestedCategoryId = (body.categoryId as string | null) ?? null;
+  const now = Date.now();
 
   if (body._type === "product") {
-    // Create product
     const title = (body.title as Product["title"]) ?? { fa: "محصول جدید", en: "New product" };
-    const product: Product = {
-      id: `prod-${crypto.randomBytes(6).toString("hex")}`,
-      sku: (body.sku as string) ?? `SKU-${Date.now().toString(36).toUpperCase()}`,
-      slug: makeUniqueSlug(
-        ((body.slug as string) || title.fa || title.en || `product-${Date.now().toString(36)}`),
-        [...content.products, ...content.patterns],
-      ),
-      title: (body.title as Product["title"]) ?? { fa: "محصول جدید", en: "New product" },
-      description: (body.description as Product["description"]) ?? { fa: "", en: "" },
-      categoryId,
-      patternId: (body.patternId as string | null) ?? null,
-      artistId,
-      price: (body.price as Product["price"]) ?? { fa: 0, en: 0 },
-      compareAt: body.compareAt as Product["compareAt"],
-      colors: (body.colors as Product["colors"]) ?? [],
-      sizes: (body.sizes as Product["sizes"]) ?? [],
-      specs: (body.specs as Product["specs"]) ?? [],
-      materials: (body.materials as Product["materials"]) ?? { fa: "", en: "" },
-      featured: false,
-      bestSeller: false,
-      isNew: true,
-      order: content.products.length + 1,
-    };
-    await saveContent({ ...content, products: [...content.products, product] });
-    return NextResponse.json({ ok: true, product }, withNoStore());
+    const productId = `prod-${crypto.randomBytes(6).toString("hex")}`;
+    const sku = (body.sku as string) ?? `SKU-${now.toString(36).toUpperCase()}`;
+    try {
+      const { result: product, etag } = await mutateCollection("products", (products, content) => {
+        const categoryId = requestedCategoryId ?? (content.categories[0]?.id ?? "");
+        if (!categoryId || !content.categories.some((category) => category.id === categoryId)) {
+          throw new Error("invalid_category");
+        }
+
+        const product: Product = {
+          id: productId,
+          sku,
+          slug: makeUniqueSlug(
+            ((body.slug as string) || title.fa || title.en || `product-${now.toString(36)}`),
+            [...content.products, ...content.patterns],
+          ),
+          title,
+          description: (body.description as Product["description"]) ?? { fa: "", en: "" },
+          categoryId,
+          patternId: (body.patternId as string | null) ?? null,
+          artistId,
+          price: (body.price as Product["price"]) ?? { fa: 0, en: 0 },
+          compareAt: body.compareAt as Product["compareAt"],
+          colors: (body.colors as Product["colors"]) ?? [],
+          sizes: (body.sizes as Product["sizes"]) ?? [],
+          specs: (body.specs as Product["specs"]) ?? [],
+          materials: (body.materials as Product["materials"]) ?? { fa: "", en: "" },
+          featured: false,
+          bestSeller: false,
+          isNew: true,
+          order: products.length + 1,
+        };
+        return { items: [...products, product], result: product };
+      });
+      return withContentEtag(NextResponse.json({ ok: true, product }, withNoStore()), etag);
+    } catch (error) {
+      return mutationErrorResponse(error, "create");
+    }
   }
 
-  // Create pattern
   const b = body as Record<string, unknown>;
   const colorways = (b.colorways as Pattern["colorways"]) ?? [];
   const defaultImage =
-    colorways.find((c) => c.isDefault)?.image ||
+    colorways.find((colorway) => colorway.isDefault)?.image ||
     colorways[0]?.image ||
     (b.image as string) ||
     "/images/collections/s01.jpg";
   const title = (b.title as Pattern["title"]) ?? { fa: "پترن جدید", en: "New pattern" };
-  const pattern: Pattern = {
-    id: `pat-${crypto.randomBytes(6).toString("hex")}`,
-    sku: (b.sku as string) ?? `PAT-${Date.now().toString(36).toUpperCase()}`,
-    slug: makeUniqueSlug((b.slug as string) || title.fa || title.en || `pattern-${Date.now().toString(36)}`, [...content.products, ...content.patterns]),
-    title: (b.title as Pattern["title"]) ?? { fa: "پترن جدید", en: "New pattern" },
-    description: (b.description as Pattern["description"]) ?? { fa: "", en: "" },
-    image: defaultImage,
-    gallery: (b.gallery as string[]) ?? (colorways.map((c) => c.image).filter(Boolean) as string[]),
-    categoryId,
-    spaceIds: (b.spaceIds as string[]) ?? [],
-    artistId,
-    price: (b.price as Pattern["price"]) ?? { fa: 0, en: 0 },
-    specs: (b.specs as Pattern["specs"]) ?? {
-      repeat: { fa: "تکرار کامل", en: "Full repeat" },
-      dpi: "300",
-      formats: "PNG, PDF",
-      colors: colorways.length || 4,
-      scale: { fa: "بزرگ", en: "Large" },
-    },
-    palette: (b.palette as string[]) ?? colorways.map((c) => c.hex),
-    colorways: colorways.length ? colorways : undefined,
-    tags: (b.tags as string[]) ?? [],
-    featured: false,
-    trending: false,
-    bestSeller: false,
-    isNew: true,
-    createdAt: new Date().toISOString(),
-    likes: 0,
-  };
-  await saveContent({ ...content, patterns: [...content.patterns, pattern] });
-  return NextResponse.json({ ok: true, pattern }, withNoStore());
+  const patternId = `pat-${crypto.randomBytes(6).toString("hex")}`;
+  const sku = (b.sku as string) ?? `PAT-${now.toString(36).toUpperCase()}`;
+  const createdAt = new Date(now).toISOString();
+
+  try {
+    const { result: pattern, etag } = await mutateCollection("patterns", (patterns, content) => {
+      const categoryId = requestedCategoryId ?? (content.categories[0]?.id ?? "");
+      if (!categoryId || !content.categories.some((category) => category.id === categoryId)) {
+        throw new Error("invalid_category");
+      }
+
+      const pattern: Pattern = {
+        id: patternId,
+        sku,
+        slug: makeUniqueSlug(
+          (b.slug as string) || title.fa || title.en || `pattern-${now.toString(36)}`,
+          [...content.products, ...content.patterns],
+        ),
+        title,
+        description: (b.description as Pattern["description"]) ?? { fa: "", en: "" },
+        image: defaultImage,
+        gallery: (b.gallery as string[]) ?? (colorways.map((colorway) => colorway.image).filter(Boolean) as string[]),
+        categoryId,
+        spaceIds: (b.spaceIds as string[]) ?? [],
+        artistId,
+        price: (b.price as Pattern["price"]) ?? { fa: 0, en: 0 },
+        specs: (b.specs as Pattern["specs"]) ?? {
+          repeat: { fa: "تکرار کامل", en: "Full repeat" },
+          dpi: "300",
+          formats: "PNG, PDF",
+          colors: colorways.length || 4,
+          scale: { fa: "بزرگ", en: "Large" },
+        },
+        palette: (b.palette as string[]) ?? colorways.map((colorway) => colorway.hex),
+        colorways: colorways.length ? colorways : undefined,
+        tags: (b.tags as string[]) ?? [],
+        featured: false,
+        trending: false,
+        bestSeller: false,
+        isNew: true,
+        createdAt,
+        likes: 0,
+      };
+      return { items: [...patterns, pattern], result: pattern };
+    });
+    return withContentEtag(NextResponse.json({ ok: true, pattern }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "create");
+  }
 }
 
 /** PUT /api/artist/patterns — update an existing item */
 export async function PUT(req: Request) {
-  const session = await requireArtist();
-  if (!session) return unauthorized();
+  const auth = await requireArtist();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> & { _type?: "pattern" | "product"; id?: string } | null;
   if (!body?.id) return NextResponse.json({ ok: false, error: "invalid_payload" }, withNoStore({ status: 400 }));
 
-  const content = await getContent();
-
   if (body._type === "product") {
-    const idx = content.products.findIndex((p) => p.id === body.id);
-    if (idx === -1) return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
-    if (session.role !== "admin" && content.products[idx].artistId !== session.artistId) {
-      return unauthorized();
+    try {
+      const { result: product, etag } = await mutateCollection("products", (products) => {
+        const index = products.findIndex((item) => item.id === body.id);
+        if (index < 0) throw new Error("not_found");
+        if (session.role !== "admin" && products[index].artistId !== session.artistId) {
+          throw new Error("forbidden");
+        }
+
+        const updated: Product = { ...products[index], ...body } as Product;
+        const nextProducts = [...products];
+        nextProducts[index] = updated;
+        return { items: nextProducts, result: updated };
+      });
+      return withContentEtag(NextResponse.json({ ok: true, product }, withNoStore()), etag);
+    } catch (error) {
+      return mutationErrorResponse(error, "update");
     }
-    const updated: Product = { ...content.products[idx], ...body } as Product;
-    const products = content.products.map((p, i) => (i === idx ? updated : p));
-    await saveContent({ ...content, products });
-    return NextResponse.json({ ok: true, product: updated }, withNoStore());
   }
 
-  const idx = content.patterns.findIndex((p) => p.id === body.id);
-  if (idx === -1) return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
-  if (session.role !== "admin" && content.patterns[idx].artistId !== session.artistId) {
-    return unauthorized();
+  try {
+    const { result: pattern, etag } = await mutateCollection("patterns", (patterns) => {
+      const index = patterns.findIndex((item) => item.id === body.id);
+      if (index < 0) throw new Error("not_found");
+      if (session.role !== "admin" && patterns[index].artistId !== session.artistId) {
+        throw new Error("forbidden");
+      }
+
+      const updated: Pattern = { ...patterns[index], ...body } as Pattern;
+      const nextPatterns = [...patterns];
+      nextPatterns[index] = updated;
+      return { items: nextPatterns, result: updated };
+    });
+    return withContentEtag(NextResponse.json({ ok: true, pattern }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "update");
   }
-  const updated: Pattern = { ...content.patterns[idx], ...body } as Pattern;
-  const patterns = content.patterns.map((p, i) => (i === idx ? updated : p));
-  await saveContent({ ...content, patterns });
-  return NextResponse.json({ ok: true, pattern: updated }, withNoStore());
 }
 
 /** DELETE /api/artist/patterns?id=…&type=pattern|product */
 export async function DELETE(req: Request) {
-  const session = await requireArtist();
-  if (!session) return unauthorized();
+  const auth = await requireArtist();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const type = searchParams.get("type") ?? "pattern";
   if (!id) return NextResponse.json({ ok: false, error: "missing_id" }, withNoStore({ status: 400 }));
 
-  const content = await getContent();
-
   if (type === "product") {
-    const item = content.products.find((p) => p.id === id);
-    if (!item) return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
-    if (session.role !== "admin" && item.artistId !== session.artistId) return unauthorized();
-    await saveContent({ ...content, products: content.products.filter((p) => p.id !== id) });
-    return NextResponse.json({ ok: true }, withNoStore());
+    try {
+      const { etag } = await mutateCollection("products", (products) => {
+        const item = products.find((product) => product.id === id);
+        if (!item) throw new Error("not_found");
+        if (session.role !== "admin" && item.artistId !== session.artistId) throw new Error("forbidden");
+        return { items: products.filter((product) => product.id !== id), result: undefined };
+      });
+      return withContentEtag(NextResponse.json({ ok: true }, withNoStore()), etag);
+    } catch (error) {
+      return mutationErrorResponse(error, "delete");
+    }
   }
 
-  const item = content.patterns.find((p) => p.id === id);
-  if (!item) return NextResponse.json({ ok: false, error: "not_found" }, withNoStore({ status: 404 }));
-  if (session.role !== "admin" && item.artistId !== session.artistId) return unauthorized();
-  await saveContent({ ...content, patterns: content.patterns.filter((p) => p.id !== id) });
-  return NextResponse.json({ ok: true }, withNoStore());
+  try {
+    const { etag } = await mutateCollection("patterns", (patterns) => {
+      const item = patterns.find((pattern) => pattern.id === id);
+      if (!item) throw new Error("not_found");
+      if (session.role !== "admin" && item.artistId !== session.artistId) throw new Error("forbidden");
+      return { items: patterns.filter((pattern) => pattern.id !== id), result: undefined };
+    });
+    return withContentEtag(NextResponse.json({ ok: true }, withNoStore()), etag);
+  } catch (error) {
+    return mutationErrorResponse(error, "delete");
+  }
 }

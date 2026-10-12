@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { PublicUser } from "@/lib/data/users";
 import type { Artist } from "@/lib/types";
+import type { AdminContentMutation } from "@/lib/admin-content-mutation";
 
 /* ──────────────────────────────────────────────────────────────
    Types & Helpers
@@ -584,7 +585,11 @@ function StatsBar({ rows }: { rows: ArtistRow[] }) {
 /* ──────────────────────────────────────────────────────────────
    Main Component
    ────────────────────────────────────────────────────────────── */
-export function ArtistsSignupManager() {
+export function ArtistsSignupManager({
+  onContentMutation,
+}: {
+  onContentMutation: (mutation: AdminContentMutation) => void;
+}) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -666,6 +671,10 @@ export function ArtistsSignupManager() {
         body: JSON.stringify({ id: artistId, status: "approved" }),
       });
       if (!res.ok) throw new Error();
+      onContentMutation({
+        etag: res.headers.get("ETag"),
+        artist: { kind: "patch", id: artistId, value: { status: "approved", rejectionNote: undefined } },
+      });
       setArtists((prev) =>
         prev.map((a) => (a.id === artistId ? { ...a, status: "approved", rejectionNote: undefined } : a)),
       );
@@ -690,6 +699,10 @@ export function ArtistsSignupManager() {
         body: JSON.stringify({ id: artistId, status: "rejected", rejectionNote: note || undefined }),
       });
       if (!res.ok) throw new Error();
+      onContentMutation({
+        etag: res.headers.get("ETag"),
+        artist: { kind: "patch", id: artistId, value: { status: "rejected", rejectionNote: note || undefined } },
+      });
       setArtists((prev) =>
         prev.map((a) =>
           a.id === artistId ? { ...a, status: "rejected", rejectionNote: note || undefined } : a,
@@ -708,19 +721,24 @@ export function ArtistsSignupManager() {
   async function handleDelete(userId: string, artistId?: string) {
     setActionLoading(artistId ?? userId);
     try {
-      // Delete artist record first
-      if (artistId) {
-        await fetch(`/api/admin/artists?id=${artistId}`, { method: "DELETE", credentials: "include" });
-      }
-      // Delete user
-      await fetch("/api/admin/users", {
+      const response = await fetch("/api/admin/users", {
         method: "DELETE",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: userId }),
       });
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
-      setArtists((prev) => prev.filter((a) => a.id !== artistId));
+      const result = await response.json().catch(() => null) as {
+        ok?: boolean;
+        removedArtistIds?: string[];
+      } | null;
+      if (!response.ok || !result?.ok) throw new Error("user_delete_failed");
+      const removedIds = result.removedArtistIds ?? (artistId ? [artistId] : []);
+      onContentMutation({
+        etag: response.headers.get("ETag"),
+        artist: { kind: "remove", ids: removedIds },
+      });
+      setUsers((prev) => prev.filter((user) => user.id !== userId));
+      setArtists((prev) => prev.filter((artist) => !removedIds.includes(artist.id)));
       setSelected(null);
     } catch {
       setError("عملیات حذف با خطا مواجه شد.");

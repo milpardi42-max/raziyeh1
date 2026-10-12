@@ -44,7 +44,9 @@ import { AdminPushControl } from "@/components/admin/AdminPushControl";
 import { HomeSectionsManager } from "@/components/admin/HomeSectionsManager";
 import { PatternsManager } from "@/components/admin/PatternsManager";
 import { ProductsManager } from "@/components/admin/ProductsManager";
+import { CollectionsManager } from "@/components/admin/CollectionsManager";
 import { BuyersManager } from "@/components/admin/BuyersManager";
+import { UsersManager } from "@/components/admin/UsersManager";
 import { ArtistsSignupManager } from "@/components/admin/ArtistsSignupManager";
 import { ArtistsManager } from "@/components/admin/ArtistsManager";
 import { PortfoliosManager } from "@/components/admin/PortfoliosManager";
@@ -59,10 +61,14 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import { ErrorState, Skeleton } from "@/components/ui/States";
 import { Badge } from "@/components/ui/Badge";
 import { SESSION_FETCH } from "@/lib/http";
+import { getCategoryUsageCounts, hasCategoryReferences } from "@/lib/category-references";
+import { getAnnouncementBarPreview, getAnnouncementBarRowState, getNextAnnouncementBarExpiryAt, setSingleEnabledAnnouncementBar } from "@/lib/announcement-bars";
+import { mergeSeoEntries, SEO_ROUTE_DEFAULTS } from "@/lib/seo-pages";
 import { ADMIN_LOGIN_DISABLED } from "@/lib/admin-access";
 import { withCsrf } from "@/lib/security/csrf-client";
 import { cn, href, slugify, t } from "@/lib/utils";
 import type { AnnouncementBarConfig, AnnouncementBarDirection, AnnouncementBarKind, AnnouncementBarMotion, AnnouncementBarTransition, Banner, Category, EducationItem, HeroContent, HomeSectionKey, PortfolioHeroSettings, SeoMeta, SiteContent } from "@/lib/types";
+import type { AdminContentMutation } from "@/lib/admin-content-mutation";
 import { PortfolioHeroManager } from "@/components/admin/PortfolioHeroManager";
 import { MobileAdminNav } from "@/components/admin/MobileAdminNav";
 import { portfolioHero as defaultPortfolioHero } from "@/lib/data/seed";
@@ -72,6 +78,7 @@ type Section =
   | "dashboard"
   | "financial"
   | "buyers"
+  | "users"
   | "chats"
   | "reservations"
   | "artists-signup"
@@ -79,6 +86,7 @@ type Section =
   | "hero"
   | "portfolio-hero"
   | "categories"
+  | "collections"
   | "patterns"
   | "products"
   | "artists"
@@ -118,11 +126,29 @@ class UnauthorizedError extends Error {
   }
 }
 
-async function adminFetch<T>(init?: RequestInit): Promise<T> {
+class ContentConflictError extends Error {
+  constructor() {
+    super("etag_conflict");
+    this.name = "ContentConflictError";
+  }
+}
+
+interface AdminContentResponse<T> {
+  data: T;
+  etag: string | null;
+}
+
+async function adminFetch<T>(init?: RequestInit): Promise<AdminContentResponse<T>> {
   const r = await fetch("/api/admin/content", { ...SESSION_FETCH, ...withCsrf(init ?? {}) });
   if (r.status === 401) throw new UnauthorizedError();
+  const payload = await r.json().catch(() => null) as (T & { error?: string }) | null;
+  if (r.status === 409 && payload?.error === "etag_conflict") throw new ContentConflictError();
   if (!r.ok) throw new Error(`admin/content → ${r.status}`);
-  return (await r.json()) as T;
+  const rawEtag = r.headers.get("ETag");
+  return {
+    data: payload as T,
+    etag: rawEtag?.replace(/^"|"$/g, "") ?? null,
+  };
 }
 
 /* ============================================================
@@ -146,6 +172,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "ثبت‌نام‌کننده‌ها",
     items: [
       { id: "buyers", label: "خریداران", icon: <ShoppingBag className="h-4 w-4" /> },
+      { id: "users", label: "مدیریت کاربران", icon: <Users className="h-4 w-4" /> },
       { id: "chats", label: "گفتگوهای آنلاین", icon: <MessageCircle className="h-4 w-4" /> },
       { id: "reservations", label: "رزرو رویدادها", icon: <CalendarClock className="h-4 w-4" /> },
       { id: "artists-signup", label: "طراحان", icon: <Palette className="h-4 w-4" /> },
@@ -170,6 +197,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/fa/marketplace",
       },
       { id: "categories", label: "دسته‌بندی‌ها", icon: <Tag className="h-4 w-4" /> },
+      { id: "collections", label: "مجموعه‌ها", icon: <GalleryHorizontalEnd className="h-4 w-4" /> },
       { id: "patterns", label: "پترن‌ها", icon: <Palette className="h-4 w-4" /> },
       { id: "products", label: "محصولات", icon: <ShoppingBag className="h-4 w-4" /> },
     ],
@@ -199,8 +227,11 @@ export function AdminApp() {
   const { locale } = useLocale();
   const router = useRouter();
   const [data, setData] = useState<SiteContent | null>(null);
+  const dataRef = useRef<SiteContent | null>(null);
+  const [contentEtag, setContentEtag] = useState<string | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
   const [status, setStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+  const [saveError, setSaveError] = useState<"conflict" | "error" | null>(null);
   const [dirty, setDirty] = useState(false);
   const [loadError, setLoadError] = useState<"unauthorized" | "error" | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -217,7 +248,14 @@ export function AdminApp() {
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoadError(null);
     try {
-      setData(await adminFetch<SiteContent>({ signal }));
+      const response = await adminFetch<SiteContent>({ signal });
+      if (!response.etag) throw new Error("admin/content response missing ETag");
+      dataRef.current = response.data;
+      setData(response.data);
+      setContentEtag(response.etag);
+      setDirty(false);
+      setStatus("idle");
+      setSaveError(null);
     } catch (e) {
       if (signal?.aborted) return;
       setLoadError(e instanceof UnauthorizedError ? "unauthorized" : "error");
@@ -229,8 +267,10 @@ export function AdminApp() {
     try {
       const r = await fetch("/api/admin/artists", { credentials: "include", cache: "no-store", signal });
       if (!r.ok) return;
-      const j = (await r.json()) as { ok: boolean; artists: { status?: string }[] };
-      const count = (j.artists ?? []).filter((a) => !a.status || a.status === "pending").length;
+      const j = (await r.json()) as { ok: boolean; artists: { status?: string; userId?: string }[] };
+      const count = (j.artists ?? []).filter((artist) =>
+        artist.status === "pending" || (!artist.status && Boolean(artist.userId)),
+      ).length;
       setPendingArtistCount(count);
     } catch {
       // silently ignore
@@ -255,64 +295,120 @@ export function AdminApp() {
   }, [ready, user, load, loadPendingCount]);
 
   const update = useCallback((patch: Partial<SiteContent>) => {
-    setData((d) => (d ? { ...d, ...patch } : d));
+    const current = dataRef.current;
+    if (!current) return;
+    const next = { ...current, ...patch };
+    dataRef.current = next;
+    setData(next);
     setDirty(true);
+  }, []);
+
+  /** Reconcile a narrowly-scoped API mutation without marking persisted data dirty. */
+  const applyContentMutation = useCallback((mutation: AdminContentMutation) => {
+    if (mutation.etag) setContentEtag(mutation.etag.replace(/^"|"$/g, ""));
+    const current = dataRef.current;
+    if (!current || !mutation.artist) return;
+
+    const artistMutation = mutation.artist;
+    let artists = current.artists;
+    if (artistMutation.kind === "remove") {
+      const removedIds = new Set(artistMutation.ids);
+      artists = artists.filter((artist) => !removedIds.has(artist.id));
+    } else if (artistMutation.kind === "patch") {
+      artists = artists.map((artist) => artist.id === artistMutation.id
+        ? { ...artist, ...artistMutation.value }
+        : artist);
+    } else {
+      const incoming = artistMutation.value;
+      const index = artists.findIndex((artist) => artist.id === incoming.id);
+      artists = index === -1
+        ? [...artists, incoming]
+        : artists.map((artist, currentIndex) => currentIndex === index ? { ...artist, ...incoming } : artist);
+    }
+
+    const next = { ...current, artists };
+    dataRef.current = next;
+    setData(next);
+    setPendingArtistCount(artists.filter((artist) =>
+      artist.status === "pending" || (!artist.status && Boolean(artist.userId)),
+    ).length);
   }, []);
 
   const save = async () => {
     if (!data) return;
+    if (!contentEtag) {
+      setStatus("error");
+      setSaveError("error");
+      return;
+    }
+
+    const savedSnapshot = data;
     setStatus("saving");
+    setSaveError(null);
     try {
-      await adminFetch<{ ok: true }>({
+      const response = await adminFetch<{ ok: true }>({
         method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(data),
+        headers: {
+          "content-type": "application/json",
+          "If-Match": `"${contentEtag}"`,
+        },
+        body: JSON.stringify(savedSnapshot),
       });
-      if (section === "financial" && data.financialConfig) {
-        const response = await fetch("/api/marketplace/admin", {
-          ...SESSION_FETCH,
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            action: "settings",
-            settings: {
-              vatPct: data.financialConfig.vatPct,
-              artistSharePct: data.financialConfig.defaultArtistSharePct,
-              affiliatePct: data.financialConfig.affiliateCommissionPct,
-              payoutMinimumFa: data.financialConfig.minPayoutFa,
-              payoutMinimumEn: data.financialConfig.minPayoutEn,
-            },
-          }),
-        });
-        if (!response.ok) throw new Error(`marketplace settings → ${response.status}`);
-      }
-      setStatus("ok");
-      setDirty(false);
+      if (!response.etag) throw new Error("admin/content response missing ETag");
+      setContentEtag(response.etag);
+      const hasNewChanges = dataRef.current !== savedSnapshot;
+      setDirty(hasNewChanges);
+      setStatus(hasNewChanges ? "idle" : "ok");
       router.refresh();
-      setTimeout(() => setStatus("idle"), 2500);
+      if (!hasNewChanges) setTimeout(() => setStatus("idle"), 2500);
     } catch (e) {
       if (e instanceof UnauthorizedError) {
         setStatus("idle");
         setLoadError("unauthorized");
+      } else if (e instanceof ContentConflictError) {
+        // Keep the local draft intact; the operator can review the latest server version before retrying.
+        setStatus("error");
+        setSaveError("conflict");
       } else {
         setStatus("error");
+        setSaveError("error");
       }
       throw e;
     }
   };
 
   const reset = async () => {
-    if (!confirm("آیا مطمئن هستید؟ تمام تغییرات ادمین حذف شده و محتوای اولیه بازگردانده می‌شود."))
+    if (!confirm("این کار فقط سند محتوای سایت (صفحه‌ها، کاتالوگ و تنظیمات محتوا) را به دادهٔ اولیه برمی‌گرداند. حساب‌های کاربری، سفارش‌ها، گفتگوها، رزروها و داده‌های جداگانهٔ مارکت‌پلیس پاک نمی‌شوند. ادامه می‌دهید؟"))
       return;
+    if (!contentEtag) {
+      setStatus("error");
+      setSaveError("error");
+      return;
+    }
     try {
-      await adminFetch<{ ok: true }>({ method: "DELETE" });
-      setData(await adminFetch<SiteContent>());
+      await adminFetch<{ ok: true }>({
+        method: "DELETE",
+        headers: { "If-Match": `"${contentEtag}"` },
+      });
+      const latest = await adminFetch<SiteContent>();
+      if (!latest.etag) throw new Error("admin/content response missing ETag");
+      dataRef.current = latest.data;
+      setData(latest.data);
+      setContentEtag(latest.etag);
       setDirty(false);
       setLoadError(null);
+      setSaveError(null);
+      setStatus("idle");
       router.refresh();
     } catch (e) {
       if (e instanceof UnauthorizedError) setLoadError("unauthorized");
-      else setStatus("error");
+      else if (e instanceof ContentConflictError) {
+        setStatus("error");
+        setSaveError("conflict");
+      } else {
+        setStatus("error");
+        setSaveError("error");
+      }
     }
   };
 
@@ -464,7 +560,7 @@ export function AdminApp() {
             )}
             {status === "error" && (
               <span className="rounded-full bg-error/10 px-3 py-1 text-xs font-medium text-error">
-                خطا در ذخیره
+                {saveError === "conflict" ? "تغییر هم‌زمان؛ بازبینی لازم است" : "خطا در ذخیره"}
               </span>
             )}
             {dirty && status === "idle" && (
@@ -511,6 +607,30 @@ export function AdminApp() {
 
         {/* بدنه صفحه */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
+          {saveError && data && (
+            <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-error/30 bg-error/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-foreground">
+                <p className="font-semibold">
+                  {saveError === "conflict" ? "نسخهٔ محتوای سایت هم‌زمان تغییر کرده است." : "وضعیت ذخیره‌سازی تأیید نشد."}
+                </p>
+                <p className="mt-1 text-xs text-foreground-secondary">
+                  {saveError === "conflict"
+                    ? "پیش‌نویس فعلی شما حفظ شده و بازنویسی نشده است. بارگذاری نسخهٔ سرور، تغییرات محلی ذخیره‌نشده را جایگزین می‌کند."
+                    : "برای اطمینان از وضعیت سرور، نسخهٔ فعلی را بارگذاری کنید؛ این کار پیش‌نویس محلی را جایگزین می‌کند."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-error/30 px-3 py-2 text-xs font-semibold text-error hover:bg-error/10"
+                onClick={() => {
+                  if (dirty && !confirm("بارگذاری نسخهٔ سرور، تمام تغییرات ذخیره‌نشدهٔ این صفحه را جایگزین می‌کند. ادامه می‌دهید؟")) return;
+                  void load();
+                }}
+              >
+                بارگذاری نسخهٔ سرور
+              </button>
+            </div>
+          )}
           {loadError === "unauthorized" ? (
             <div className="max-w-lg space-y-3">
               <ErrorState
@@ -553,9 +673,10 @@ export function AdminApp() {
                 <FinancialManager data={data} update={update} onSave={save} />
               )}
               {section === "buyers" && <BuyersManager />}
+              {section === "users" && <UsersManager onContentMutation={applyContentMutation} />}
               {section === "chats" && <ChatsManager />}
               {section === "reservations" && <ReservationsManager />}
-              {section === "artists-signup" && <ArtistsSignupManager />}
+              {section === "artists-signup" && <ArtistsSignupManager onContentMutation={applyContentMutation} />}
               {section === "home" && <HomeSectionsManager data={data} update={update} />}
               {section === "hero" && (
                 <HeroEditor
@@ -571,6 +692,7 @@ export function AdminApp() {
                 />
               )}
               {section === "categories" && <CategoriesEditor data={data} update={update} />}
+              {section === "collections" && <CollectionsManager data={data} update={update} locale={locale} />}
               {section === "patterns" && (
                 <PatternsManager data={data} update={update} />
               )}
@@ -578,7 +700,7 @@ export function AdminApp() {
                 <ProductsManager data={data} update={update} />
               )}
               {section === "artists" && (
-                <ArtistsManager data={data} update={update} locale={locale} />
+                <ArtistsManager data={data} update={update} onContentMutation={applyContentMutation} locale={locale} />
               )}
               {section === "portfolios" && (
                 <PortfoliosManager data={data} update={update} locale={locale} />
@@ -994,15 +1116,28 @@ function CategoriesEditor({
     });
   };
   const remove = (id: string) => {
-    if (data.patterns.some((p) => p.categoryId === id))
-      return alert("این دسته‌بندی در پترن‌ها استفاده می‌شود و قابل حذف نیست.");
+    const usage = getCategoryUsageCounts(data, id);
+    if (hasCategoryReferences(usage)) {
+      const references = [
+        [usage.patterns, "پترن"],
+        [usage.products, "محصول"],
+        [usage.education, "محتوای آکادمی"],
+        [usage.portfolios, "پورتفولیو"],
+      ]
+        .filter(([count]) => Number(count) > 0)
+        .map(([count, label]) => `${count} ${label}`)
+        .join("، ");
+      return alert(`این دسته‌بندی به ${references} ارجاع دارد و قابل حذف نیست. ابتدا رکوردها را به دستهٔ دیگری منتقل کنید.`);
+    }
+    const category = data.categories.find((item) => item.id === id);
+    if (category && !confirm(`دسته‌بندی «${category.name.fa}» حذف شود؟`)) return;
     update({ categories: data.categories.filter((c) => c.id !== id) });
   };
 
   return (
     <Card
       title="دسته‌بندی‌ها / سبک‌ها"
-      desc="مدیریت ساختار سبک‌شناسی که توسط پترن‌ها، محصولات و بخش سبک‌ها استفاده می‌شود."
+      desc="مدیریت دسته‌های مشترک کاتالوگ و آکادمی؛ حذف فقط زمانی ممکن است که پترن، محصول، دوره یا پورتفولیو به آن ارجاع نداشته باشد."
       action={
         <Button size="sm" variant="outline" onClick={add}>
           <Plus className="h-4 w-4" />
@@ -1021,7 +1156,7 @@ function CategoriesEditor({
       ) : (
         <ul className="space-y-3">
           {cats.map((c, idx) => {
-            const patternCount = data.patterns.filter((p) => p.categoryId === c.id).length;
+            const usage = getCategoryUsageCounts(data, c.id);
             return (
               <li
                 key={c.id}
@@ -1050,10 +1185,13 @@ function CategoriesEditor({
                     <p className="truncate text-[11px] text-muted" dir="ltr">
                       /{c.slug}
                     </p>
+                    <p className="mt-0.5 text-[10px] text-muted">
+                      {usage.products} محصول · {usage.education} آکادمی · {usage.portfolios} پورتفولیو
+                    </p>
                   </div>
 
-                  {/* بج پترن‌ها */}
-                  <Badge tone="outline">{patternCount} پترن</Badge>
+                  {/* شمار پترن‌های وابسته */}
+                  <Badge tone="outline">{usage.patterns} پترن</Badge>
 
                   {/* ترتیب */}
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -1379,6 +1517,20 @@ const KIND_META: Record<AnnouncementBarKind, { label: string; icon: string; defa
   custom:         { label: "سفارشی",     icon: "📢", defaultBg: "#1e2230", defaultText: "#ffffff", desc: "هر پیام دلخواه دیگری" },
 };
 
+const DEFAULT_ANNOUNCEMENT_CTA: Record<AnnouncementBarKind, Localized> = {
+  "live-webinar": { fa: "ورود به رویداد", en: "Join now" },
+  webinar: { fa: "ثبت‌نام", en: "Register" },
+  sale: { fa: "مشاهده تخفیف‌ها", en: "Shop sale" },
+  custom: { fa: "بیشتر بدانید", en: "Learn more" },
+};
+
+const DEFAULT_ANNOUNCEMENT_HREF: Record<AnnouncementBarKind, string> = {
+  "live-webinar": "",
+  webinar: "/academy",
+  sale: "/shop",
+  custom: "/",
+};
+
 const TRANSITION_META: Record<AnnouncementBarTransition, { label: string; desc: string }> = {
   "slide-down": { label: "اسلاید",   desc: "ورود نرم از راست یا چپ" },
   "fade":       { label: "محو",      desc: "fade in" },
@@ -1468,9 +1620,20 @@ function AnnouncementBarsManager({
   onChange: (b: AnnouncementBarConfig[]) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const nextExpiry = getNextAnnouncementBarExpiryAt(bars, now);
+    if (nextExpiry === null) return;
+    const delay = Math.max(0, nextExpiry - now + 25);
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [bars, now]);
 
   const set = (id: string, patch: Partial<AnnouncementBarConfig>) =>
     onChange(bars.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const setEnabled = (id: string, enabled: boolean) =>
+    onChange(setSingleEnabledAnnouncementBar(bars, id, enabled));
 
   const addBar = (kind: AnnouncementBarKind) => {
     const id = `ab-${Date.now().toString(36)}`;
@@ -1481,25 +1644,13 @@ function AnnouncementBarsManager({
       sale:           { fa: "حراجی ویژه — تا ۴۰٪ تخفیف!", en: "Special sale — up to 40% off!" },
       custom:         { fa: "پیام خود را اینجا بنویسید.", en: "Write your message here." },
     };
-    const defaultCTA: Record<AnnouncementBarKind, { fa: string; en: string }> = {
-      "live-webinar": { fa: "ورود به رویداد", en: "Join now" },
-      webinar:        { fa: "ثبت‌نام", en: "Register" },
-      sale:           { fa: "مشاهده تخفیف‌ها", en: "Shop sale" },
-      custom:         { fa: "بیشتر بدانید", en: "Learn more" },
-    };
-    const defaultHref: Record<AnnouncementBarKind, string> = {
-      "live-webinar": "",
-      webinar: "/academy",
-      sale: "/shop",
-      custom: "/",
-    };
     const newBar: AnnouncementBarConfig = {
       id,
       kind,
       enabled: false,
       message: defaultMessages[kind],
-      href: defaultHref[kind],
-      ctaLabel: defaultCTA[kind],
+      href: DEFAULT_ANNOUNCEMENT_HREF[kind],
+      ctaLabel: DEFAULT_ANNOUNCEMENT_CTA[kind],
       bgColor: meta.defaultBg,
       textColor: meta.defaultText,
       transition: "slide-down",
@@ -1511,18 +1662,9 @@ function AnnouncementBarsManager({
   };
 
   const liveEvent = pickLiveEvent(education);
-  const isLiveNow = liveEvent?.liveEvent?.status === "live";
-
-  // Determine what's actually showing:
-  // - live-webinar bar enabled but no live event → waiting (not showing)
-  // - live-webinar bar enabled + live event → showing
-  // - other enabled bar → showing
-  const enabledBar = bars.find((b) => b.enabled);
-  const actuallyShowing = (() => {
-    if (!enabledBar) return "nothing" as const;
-    if (enabledBar.kind === "live-webinar") return isLiveNow ? "live-webinar" as const : "waiting" as const;
-    return "config" as const;
-  })();
+  const preview = getAnnouncementBarPreview(bars, liveEvent, now);
+  const enabledBar = preview.bar;
+  const actuallyShowing = preview.state;
 
   return (
     <div className="space-y-5">
@@ -1620,7 +1762,7 @@ function AnnouncementBarsManager({
             const bg = enabledBar.bgColor || KIND_META[enabledBar.kind].defaultBg;
             const fg = enabledBar.textColor || KIND_META[enabledBar.kind].defaultText;
             return (
-              <a href={enabledBar.href || "#"} target="_blank" rel="noopener noreferrer"
+              <a href={enabledBar.href || DEFAULT_ANNOUNCEMENT_HREF[enabledBar.kind] || "/"} target="_blank" rel="noopener noreferrer"
                 className="group flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 hover:scale-[1.005] hover:shadow-md"
                 style={{ backgroundColor: bg, color: fg }}
               >
@@ -1632,11 +1774,9 @@ function AnnouncementBarsManager({
                   {KIND_META[enabledBar.kind].label}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{enabledBar.message?.fa || "(بدون متن)"}</span>
-                {enabledBar.ctaLabel?.fa && (
-                  <span className="shrink-0 rounded-lg px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${fg}25`, color: fg }}>
-                    {enabledBar.ctaLabel.fa} ←
-                  </span>
-                )}
+                <span className="shrink-0 rounded-lg px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${fg}25`, color: fg }}>
+                  {enabledBar.ctaLabel?.fa || DEFAULT_ANNOUNCEMENT_CTA[enabledBar.kind].fa} ←
+                </span>
               </a>
             );
           })()}
@@ -1657,7 +1797,7 @@ function AnnouncementBarsManager({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-foreground">نوارهای اعلان</p>
-            <p className="mt-0.5 text-xs text-muted">فقط یک نوار می‌تواند هم‌زمان فعال باشد.</p>
+            <p className="mt-0.5 text-xs text-muted">با فعال‌کردن هر نوار، بقیه خودکار غیرفعال می‌شوند؛ نوار منقضی یا وبینارِ بدون پخش نمایش داده نمی‌شود.</p>
           </div>
           <div className="flex items-center gap-2">
             {(Object.keys(KIND_META) as AnnouncementBarKind[]).map((k) => (
@@ -1689,15 +1829,11 @@ function AnnouncementBarsManager({
               const msgFa = b.kind === "live-webinar"
                 ? (b.message?.fa ? `${b.message.fa} [نام وبینار]` : "[نام وبینار خودکار]")
                 : (b.message?.fa || "(بدون متن)");
-              const rowStatus = (() => {
-                if (!b.enabled) return "off" as const;
-                if (b.kind === "live-webinar") return isLiveNow ? "live" as const : "waiting" as const;
-                return "live" as const;
-              })();
+              const rowStatus = getAnnouncementBarRowState(b, bars, liveEvent, now);
               const isExpanded = expandedId === b.id;
 
               return (
-                <li key={b.id} className={cn(rowStatus === "live" && "bg-success/5")}>
+                <li key={b.id} className={cn(rowStatus === "showing" && "bg-success/5")}>
                   {/* ── ردیف اصلی ── */}
                   <div className="flex items-center gap-3 px-5 py-3.5">
                     {/* نوار رنگ */}
@@ -1710,7 +1846,7 @@ function AnnouncementBarsManager({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs font-semibold text-muted">{meta.icon} {meta.label}</span>
-                        {rowStatus === "live" && (
+                        {rowStatus === "showing" && (
                           <span className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
                             <span className="h-1 w-1 animate-pulse rounded-full bg-success" />
                             نمایش زنده
@@ -1721,6 +1857,12 @@ function AnnouncementBarsManager({
                             <span className="h-1 w-1 rounded-full bg-amber-400" />
                             منتظر پخش
                           </span>
+                        )}
+                        {rowStatus === "queued" && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">در اولویت بعدی</span>
+                        )}
+                        {rowStatus === "expired" && (
+                          <span className="rounded-full bg-error/10 px-2 py-0.5 text-[10px] text-error">منقضی</span>
                         )}
                         {rowStatus === "off" && (
                           <span className="rounded-full bg-background-secondary px-2 py-0.5 text-[10px] text-muted">غیرفعال</span>
@@ -1733,7 +1875,7 @@ function AnnouncementBarsManager({
                     <div className="flex shrink-0 items-center gap-3">
                       <ToggleSwitch
                         checked={b.enabled}
-                        onChange={(v) => set(b.id, { enabled: v })}
+                        onChange={(v) => setEnabled(b.id, v)}
                         label={b.enabled ? "غیرفعال کردن نوار" : "فعال کردن نوار"}
                       />
                       <button
@@ -1762,7 +1904,7 @@ function AnnouncementBarsManager({
                       <div>
                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">پیش‌نمایش</p>
                         <a
-                          href={b.href || "#"}
+                          href={b.href || (b.kind === "live-webinar" && liveEvent ? `/fa/academy/${liveEvent.slug}` : DEFAULT_ANNOUNCEMENT_HREF[b.kind] || "/")}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={cn(
@@ -1790,11 +1932,9 @@ function AnnouncementBarsManager({
                               <span className="opacity-90">{b.message?.fa || "(بدون متن)"}</span>
                             )}
                           </span>
-                          {b.ctaLabel?.fa && (
-                            <span className="shrink-0 rounded-lg px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${fg}25`, color: fg }}>
-                              {b.ctaLabel.fa} →
-                            </span>
-                          )}
+                          <span className="shrink-0 rounded-lg px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${fg}25`, color: fg }}>
+                            {b.ctaLabel?.fa || DEFAULT_ANNOUNCEMENT_CTA[b.kind].fa} →
+                          </span>
                         </a>
                         {b.kind === "live-webinar" && (
                           <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
@@ -1992,33 +2132,54 @@ function SeoEditor({
   seo: SeoMeta[];
   onChange: (s: SeoMeta[]) => void;
 }) {
+  const entries = mergeSeoEntries(seo);
   const set = (path: string, patch: Partial<SeoMeta>) =>
-    onChange(seo.map((s) => (s.path === path ? { ...s, ...patch } : s)));
+    onChange(entries.map((entry) => (entry.path === path ? { ...entry, ...patch } : entry)));
+  const reset = (path: string) => {
+    const defaults = SEO_ROUTE_DEFAULTS.find((route) => route.path === path);
+    if (defaults) set(path, { title: defaults.title, description: defaults.description });
+  };
+
   return (
     <Card
       title="متادیتای SEO"
-      desc="عنوان و توضیح هر صفحه به دو زبان فارسی و انگلیسی."
+      desc="عنوان و توضیح دوزبانهٔ صفحه‌های عمومی فهرست‌شده؛ URLهای جزئیات از محتوای همان رکورد استفاده می‌کنند و مسیرهای خصوصی عمداً در این فهرست نیستند."
     >
       <ul className="space-y-4">
-        {seo.map((s) => (
-          <li key={s.path} className="rounded-lg border border-border bg-background p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FileText className="h-3.5 w-3.5 text-muted" />
-              <code className="font-mono text-xs text-muted">{s.path}</code>
-            </div>
-            <LocalizedField
-              label="عنوان"
-              value={s.title}
-              onChange={(v) => set(s.path, { title: v })}
-            />
-            <LocalizedField
-              label="توضیحات"
-              value={s.description}
-              onChange={(v) => set(s.path, { description: v })}
-              textarea
-            />
-          </li>
-        ))}
+        {entries.map((entry) => {
+          const route = SEO_ROUTE_DEFAULTS.find((candidate) => candidate.path === entry.path);
+          return (
+            <li key={entry.path} className="rounded-lg border border-border bg-background p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <FileText className="h-3.5 w-3.5 text-muted" />
+                <strong className="text-xs text-foreground">{route?.label ?? "مسیر ذخیره‌شدهٔ قدیمی"}</strong>
+                <code className="font-mono text-xs text-muted">{entry.path}</code>
+                {route && (
+                  <button type="button" onClick={() => reset(entry.path)} className="ms-auto text-[11px] text-accent hover:underline">
+                    بازگردانی پیش‌فرض
+                  </button>
+                )}
+              </div>
+              {route ? (
+                <>
+                  <LocalizedField
+                    label="عنوان"
+                    value={entry.title}
+                    onChange={(value) => set(entry.path, { title: value })}
+                  />
+                  <LocalizedField
+                    label="توضیحات"
+                    value={entry.description}
+                    onChange={(value) => set(entry.path, { description: value })}
+                    textarea
+                  />
+                </>
+              ) : (
+                <p className="text-xs leading-5 text-muted">این مسیر به ویرایشگر SEO فعلی وصل نیست؛ مقدار ذخیره‌شده حفظ می‌شود، اما قابل ویرایش نیست.</p>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );

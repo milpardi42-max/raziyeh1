@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hasGrantedReservation, isFreePrice, safeExternalHttpsUrl } from "@/lib/academy-live";
+import { isPublishedEducation } from "@/lib/academy/publication";
 import { getContent } from "@/lib/data/store";
 import { getAllReservations } from "@/lib/data/reservations";
 import { withNoStore } from "@/lib/http";
@@ -76,7 +77,7 @@ function rewritePlaylist(text: string, playlistUrl: URL, slug: string, origin: s
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [content, reservations, session] = await Promise.all([getContent(), getAllReservations(), getSession()]);
-  const event = content.education.find((item) => item.slug === slug && item.type === "webinar");
+  const event = content.education.find((item) => isPublishedEducation(item) && item.slug === slug && item.type === "webinar");
   const configured = event?.liveEvent?.webinarStream;
   const base = safeExternalHttpsUrl(configured?.source === "external" ? configured.hlsUrl : undefined);
   if (!event || !base) return errorResponse("stream_not_configured", 404);

@@ -171,49 +171,79 @@ export async function requestPayout(input: {
   return { ok: true, payout: await savePayout(payout) };
 }
 
+export type PayoutDecisionResult =
+  | { ok: true; payout: Payout; statusChanged: boolean }
+  | { ok: false; error: "not_found" | "invalid_transition" };
+
 export async function decidePayout(input: {
   id: string;
   status: Extract<PayoutStatus, "approved" | "rejected" | "paid">;
   decidedBy: string;
   reference?: string;
   note?: string;
-}): Promise<Payout | null> {
-  const payouts = await getPayouts();
-  const payout = payouts.find((item) => item.id === input.id);
-  if (!payout) return null;
+}): Promise<PayoutDecisionResult> {
+  const decision = await mutateCollection<Payout, PayoutDecisionResult>(KEYS.payouts, (items) => {
+    const index = items.findIndex((item) => item.id === input.id);
+    if (index < 0) return { result: { ok: false, error: "not_found" } };
+    const payout = items[index];
+    const statusChanged = payout.status !== input.status;
+    const allowed = payout.status === "requested"
+      ? input.status === "approved" || input.status === "rejected"
+      : payout.status === "approved"
+        ? input.status === "paid" || input.status === "rejected"
+        : false;
+    if (statusChanged && !allowed) return { result: { ok: false, error: "invalid_transition" } };
 
-  const updated: Payout = {
-    ...payout,
-    status: input.status,
-    decidedAt: new Date().toISOString(),
-    decidedBy: input.decidedBy,
-    reference: input.reference ?? payout.reference,
-    note: input.note ?? payout.note,
-    ...(input.status === "paid" ? { paidAt: new Date().toISOString() } : {}),
-  };
+    const reference = input.reference ?? payout.reference;
+    const note = input.note ?? payout.note;
+    const metadataChanged = reference !== payout.reference || note !== payout.note;
+    if (!statusChanged && !metadataChanged) return { result: { ok: true, payout, statusChanged: false } };
 
-  /* Marking a payout as paid writes an explicit ledger row so the balance stays
-     explainable from the ledger alone. */
-  if (input.status === "paid") {
-    await mutateCollection<LedgerEntry, void>(KEYS.ledger, (items) => ({
-      next: [
-        ...items,
-        {
-          id: newId("led"),
-          artistId: payout.artistId,
-          userId: payout.userId,
-          kind: "payout",
-          amount: { fa: -payout.amount.fa, en: -payout.amount.en },
-          payoutId: payout.id,
-          note: { fa: "تسویه انجام‌شده", en: "Payout settled" },
-          createdAt: new Date().toISOString(),
-        } satisfies LedgerEntry,
-      ],
-      result: undefined,
-    }));
+    const updated: Payout = {
+      ...payout,
+      status: input.status,
+      decidedAt: statusChanged ? new Date().toISOString() : payout.decidedAt,
+      decidedBy: statusChanged ? input.decidedBy : payout.decidedBy,
+      reference,
+      note,
+      ...(input.status === "paid" && !payout.paidAt ? { paidAt: new Date().toISOString() } : {}),
+    };
+    const next = items.slice();
+    next[index] = updated;
+    return { next, result: { ok: true, payout: updated, statusChanged } };
+  });
+
+  if (!decision.ok) return decision;
+
+  /*
+   * Keep the payout ledger entry idempotent: retrying a paid decision repairs
+   * a missing entry after an interrupted write without adding a second debit.
+   */
+  if (decision.payout.status === "paid") {
+    await mutateCollection<LedgerEntry, void>(KEYS.ledger, (items) => {
+      if (items.some((entry) => entry.kind === "payout" && entry.payoutId === decision.payout.id)) {
+        return { result: undefined };
+      }
+      return {
+        next: [
+          ...items,
+          {
+            id: newId("led"),
+            artistId: decision.payout.artistId,
+            userId: decision.payout.userId,
+            kind: "payout",
+            amount: { fa: -decision.payout.amount.fa, en: -decision.payout.amount.en },
+            payoutId: decision.payout.id,
+            note: { fa: "تسویه انجام‌شده", en: "Payout settled" },
+            createdAt: new Date().toISOString(),
+          } satisfies LedgerEntry,
+        ],
+        result: undefined,
+      };
+    });
   }
 
-  return savePayout(updated);
+  return decision;
 }
 
 export function payoutSummary(payouts: Payout[]) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hasGrantedReservation, isFreePrice } from "@/lib/academy-live";
+import { isPublishedEducation } from "@/lib/academy/publication";
 import { getContent } from "@/lib/data/store";
 import { getAllReservations } from "@/lib/data/reservations";
 import { objectSize, getStream } from "@/lib/marketplace/storage";
@@ -49,7 +50,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!ID_PATTERN.test(id)) return new NextResponse(null, { status: 404, headers: { "cache-control": "private, no-store" } });
 
   const [site, reservations, session] = await Promise.all([getContent(), getAllReservations(), getSession()]);
-  const course = site.education.find((item) => item.type === "course" && item.videoFiles?.some((video) => video.id === id));
+  const course = site.education.find((item) => isPublishedEducation(item) && item.type === "course" && item.videoFiles?.some((video) => video.id === id));
   const video = course?.videoFiles?.find((entry) => entry.id === id);
   if (!course || !video) return new NextResponse(null, { status: 404, headers: { "cache-control": "private, no-store" } });
 

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ArtistApprovalNotice } from "@/components/artist/ArtistApprovalNotice";
 import { ArtistStudio } from "@/components/marketplace/ArtistStudio";
 import { SignOutButton } from "@/components/profile/SignOutButton";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { getArtistApprovalStatus } from "@/lib/artist/access";
 import { getSession } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
@@ -47,6 +49,9 @@ export default async function ArtistStudioPage({ params }: { params: Promise<{ l
       </div>
     );
   }
+
+  const approval = await getArtistApprovalStatus(session);
+  if (approval !== "approved") return <ArtistApprovalNotice locale={locale} status={approval} />;
 
   return (
     <div className="container-x pt-[calc(var(--header-h)+1.5rem)] pb-24">

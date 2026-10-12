@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Settings,
   ShieldCheck,
+  Trash2,
   Wallet,
 } from "lucide-react";
 import { useLocale } from "@/components/providers/AppProviders";
@@ -34,12 +35,11 @@ import type { Localized } from "@/lib/i18n/types";
 /**
  * Admin marketplace console.
  *
- * One screen, six jobs: moderate submissions, watch the money, run the review
- * queue, settle payouts, inspect the delivery outbox and confirm which
- * integrations are live in this deployment.
+ * Operations surface for submissions and asset lifecycle, orders, payouts,
+ * marketplace analytics, delivery outbox, integrations and operational settings.
  */
 
-type View = "dashboard" | "queue" | "orders" | "payouts" | "outbox" | "integrations" | "settings";
+type View = "dashboard" | "queue" | "assets" | "orders" | "payouts" | "outbox" | "integrations" | "settings";
 
 interface Analytics {
   range: { from: string; to: string; days: number };
@@ -123,6 +123,18 @@ interface QueueItem {
   warnings: Localized[];
 }
 
+interface ManagedAssetRow {
+  id: string;
+  slug: string;
+  title: Localized;
+  status: string;
+  visibility: string;
+  kind: string;
+  updatedAt: string;
+  artistName: Localized;
+  ownerEmail: string | null;
+}
+
 interface OrderRow {
   id: string;
   buyer: { name: string; email: string };
@@ -143,6 +155,7 @@ interface PayoutRow {
   status: string;
   requestedAt: string;
   reference?: string;
+  note?: string;
 }
 
 interface OutboxRow {
@@ -162,6 +175,8 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
   const [analysis, setAnalysis] = useState<Analytics | null>(null);
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [assets, setAssets] = useState<ManagedAssetRow[]>([]);
+  const [assetFilter, setAssetFilter] = useState("");
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [payouts, setPayouts] = useState<{ summary: Record<string, PricePair>; pending: PayoutRow[]; recent: PayoutRow[] } | null>(null);
   const [outbox, setOutbox] = useState<OutboxRow[]>([]);
@@ -171,14 +186,17 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
   const [settings, setSettings] = useState<StatusPayload["settings"] | null>(null);
   const [filter, setFilter] = useState("");
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
+  const [payoutReference, setPayoutReference] = useState<Record<string, string>>({});
+  const [payoutNote, setPayoutNote] = useState<Record<string, string>>({});
 
   const load = useCallback(
     async (target: View = view) => {
       setLoading(true);
       try {
         const query =
-          target === "queue" ? "queue" : target === "orders" ? `orders&q=${encodeURIComponent(filter)}` : target === "payouts" ? "payouts" : target === "outbox" ? "outbox" : target === "integrations" ? "status" : "dashboard";
-        const response = await fetch(`/api/marketplace/admin?view=${query}`, SESSION_FETCH);
+          target === "queue" ? "queue" : target === "assets" ? "assets" : target === "orders" ? `orders&q=${encodeURIComponent(filter)}` : target === "payouts" ? "payouts" : target === "outbox" ? "outbox" : target === "integrations" ? "status" : "dashboard";
+        const endpoint = target === "assets" ? "/api/marketplace/admin/review?view=assets" : `/api/marketplace/admin?view=${query}`;
+        const response = await fetch(endpoint, SESSION_FETCH);
         const data = (await response.json()) as Record<string, unknown> & { ok?: boolean };
         if (!data.ok) {
           setNotice(data.error === "forbidden" ? (fa ? "دسترسی مدیر لازم است." : "Admin access required.") : String(data.error ?? "failed"));
@@ -191,6 +209,7 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
           setSettings((data.status as StatusPayload).settings);
         }
         if (target === "queue") setQueue((data.items as QueueItem[]) ?? []);
+        if (target === "assets") setAssets((data.items as ManagedAssetRow[]) ?? []);
         if (target === "orders") setOrders((data.orders as OrderRow[]) ?? []);
         if (target === "payouts") setPayouts(data as never);
         if (target === "outbox") setOutbox((data.messages as OutboxRow[]) ?? []);
@@ -257,7 +276,59 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
     }
   }
 
+  async function assetAction(action: "delist" | "relist" | "purge", assetId: string) {
+    const asset = assets.find((item) => item.id === assetId);
+    if (!asset) return;
+    if (action === "delist" || action === "purge") {
+      const title = fa ? asset.title.fa : asset.title.en;
+      const message = action === "purge"
+        ? fa
+          ? `«${title}» و فایل‌های ذخیره‌شده‌اش برای همیشه حذف می‌شوند. اگر سفارش، لایسنس یا بارگذاری فعال به آن وابسته باشد، حذف متوقف می‌شود و اثر خصوصی می‌ماند. ادامه می‌دهید؟`
+          : `Permanently delete “${title}” and its stored files? Deletion is blocked when orders, licenses, or open uploads reference it; a blocked item will remain private.`
+        : fa
+          ? `«${title}» از ویترین عمومی خارج می‌شود؛ لایسنس‌های قبلی باقی می‌مانند. ادامه می‌دهید؟`
+          : `Delist “${title}” from the public catalog? Existing licenses will remain valid.`;
+      if (!window.confirm(message)) return;
+    }
+
+    setBusy(`${action}:${assetId}`);
+    try {
+      const data = await post("/api/marketplace/admin/review", { action, assetId });
+      if (data.ok) {
+        if (action === "purge") {
+          setAssets((current) => current.filter((item) => item.id !== assetId));
+        } else {
+          setAssets((current) => current.map((item) => item.id === assetId ? { ...item, visibility: action === "delist" ? "private" : "public" } : item));
+        }
+        setNotice(action === "purge" ? (fa ? "اثر و فایل‌هایش حذف شد." : "Asset and stored files purged.") : action === "delist" ? (fa ? "اثر از ویترین خارج شد." : "Asset delisted.") : (fa ? "اثر دوباره در ویترین قرار گرفت." : "Asset relisted."));
+      } else if (data.error === "asset_referenced") {
+        const references = data.references as { orders?: number; licenses?: number; openUploads?: number } | undefined;
+        setAssets((current) => current.map((item) => item.id === assetId ? { ...item, visibility: "private" } : item));
+        setNotice(fa
+          ? `حذف انجام نشد؛ اثر خصوصی شد. وابستگی‌ها — سفارش: ${references?.orders ?? 0}، لایسنس: ${references?.licenses ?? 0}، بارگذاری فعال: ${references?.openUploads ?? 0}.`
+          : `Purge blocked; asset was delisted. References — orders: ${references?.orders ?? 0}, licenses: ${references?.licenses ?? 0}, open uploads: ${references?.openUploads ?? 0}.`);
+      } else if (data.error === "purge_cleanup_failed") {
+        setAssets((current) => current.map((item) => item.id === assetId ? { ...item, visibility: "private" } : item));
+        setNotice(fa
+          ? "پاک‌سازی فایل‌ها کامل نشد؛ اثر خصوصی باقی ماند. وضعیت ذخیره‌سازی را بررسی و دوباره تلاش کنید."
+          : "File cleanup did not finish; the asset remains private. Check storage and retry.");
+      } else {
+        setNotice(String(data.error ?? "failed"));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function orderAction(action: "fulfill" | "refund" | "deliver_again", orderId: string) {
+    if (action === "refund") {
+      const order = orders.find((item) => item.id === orderId);
+      const total = order ? formatPrice(order.total, locale) : orderId;
+      const message = fa
+        ? `سفارش ${orderId} به مبلغ ${total} به‌عنوان بازپرداخت‌شده ثبت می‌شود. بازپرداخت واقعی وجه باید جداگانه در درگاه انجام شود؛ این عملیات وجهی منتقل نمی‌کند. لایسنس‌های صادرشده لغو و گردش مالی مارکت‌پلیس معکوس می‌شود. ادامه می‌دهید؟`
+        : `Record order ${orderId} (${total}) as refunded? This does not return money through the gateway; process the actual refund separately. Issued licenses will be revoked and marketplace ledger entries reversed.`;
+      if (!window.confirm(message)) return;
+    }
     setBusy(`${action}:${orderId}`);
     try {
       const data = await post("/api/marketplace/admin/orders", { action, orderId });
@@ -269,9 +340,25 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
   }
 
   async function payoutAction(action: "approve" | "reject" | "paid", payoutId: string) {
+    const payout = payouts?.pending.find((item) => item.id === payoutId);
+    if (!payout) return;
+    if (action === "approve" && payout.status !== "requested") return;
+    if (action === "paid" && payout.status !== "approved") return;
+    if (action === "reject" && payout.status !== "requested" && payout.status !== "approved") return;
+    if (action === "paid") {
+      const message = fa
+        ? `تسویهٔ ${formatPrice(payout.amount, locale)} برای هنرمند ${payout.artistId} به‌صورت پرداخت‌شده ثبت شود؟ فقط پس از انتقال واقعی وجه تأیید کنید.`
+        : `Mark ${formatPrice(payout.amount, locale)} for artist ${payout.artistId} as paid? Only confirm after the transfer is complete.`;
+      if (!window.confirm(message)) return;
+    }
     setBusy(`${action}:${payoutId}`);
     try {
-      const data = await post("/api/marketplace/admin/payouts", { action, payoutId });
+      const data = await post("/api/marketplace/admin/payouts", {
+        action,
+        payoutId,
+        reference: payoutReference[payoutId]?.trim() || undefined,
+        note: payoutNote[payoutId]?.trim() || undefined,
+      });
       setNotice(data.ok ? (fa ? "وضعیت تسویه به‌روزرسانی شد." : "Payout updated.") : String(data.error ?? "failed"));
       void load("payouts");
     } finally {
@@ -281,15 +368,33 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
 
   async function saveSettings() {
     if (!settings) return;
-    const data = await post("/api/marketplace/admin", { action: "settings", settings });
-    setNotice(data.ok ? (fa ? "تنظیمات ذخیره شد." : "Settings saved.") : String(data.error ?? "failed"));
+    const data = await post("/api/marketplace/admin", {
+      action: "settings",
+      settings: {
+        affiliateDiscountPct: settings.affiliateDiscountPct,
+        autoApproveSeamless: settings.autoApproveSeamless,
+        emailOnSale: settings.emailOnSale,
+      },
+    });
+    setNotice(data.ok ? (fa ? "تنظیمات مارکت‌پلیس ذخیره شد." : "Marketplace settings saved.") : String(data.error ?? "failed"));
   }
 
   const peak = useMemo(() => (analysis?.series ?? []).reduce((max, point) => Math.max(max, point.revenueFa), 1), [analysis]);
+  const filteredAssets = useMemo(() => {
+    const needle = assetFilter.trim().toLocaleLowerCase();
+    if (!needle) return assets;
+    return assets.filter((asset) =>
+      [asset.id, asset.slug, asset.title.fa, asset.title.en, asset.artistName.fa, asset.artistName.en, asset.ownerEmail ?? ""]
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(needle),
+    );
+  }, [assets, assetFilter]);
 
   const VIEWS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "dashboard", label: fa ? "داشبورد" : "Dashboard", icon: LayoutDashboard },
     { id: "queue", label: fa ? "صف بازبینی" : "Review queue", icon: FileSearch },
+    { id: "assets", label: fa ? "همهٔ آثار" : "All assets", icon: Boxes },
     { id: "orders", label: fa ? "سفارش‌ها" : "Orders", icon: PackageCheck },
     { id: "payouts", label: fa ? "تسویه هنرمندان" : "Payouts", icon: Wallet },
     { id: "outbox", label: fa ? "ایمیل‌های ارسالی" : "Outbox", icon: Mail },
@@ -566,6 +671,77 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
         </section>
       )}
 
+      {view === "assets" && (
+        <section className="mt-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-caption text-foreground-secondary">
+              {fa ? `${filteredAssets.length} از ${assets.length} اثر` : `${filteredAssets.length} of ${assets.length} assets`}
+            </p>
+            <input
+              value={assetFilter}
+              onChange={(event) => setAssetFilter(event.target.value)}
+              placeholder={fa ? "جستجو در آثار، هنرمند یا ایمیل…" : "Search assets, artist or e-mail…"}
+              className="min-w-56 flex-1 rounded-full border border-border bg-transparent px-4 py-2 text-sm"
+            />
+          </div>
+          {filteredAssets.map((asset) => (
+            <article key={asset.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border p-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-medium">{fa ? asset.title.fa : asset.title.en}</h3>
+                  <Badge tone={asset.status === "approved" ? "success" : asset.status === "rejected" ? "error" : asset.status === "pending_review" ? "warning" : "neutral"}>
+                    {asset.status}
+                  </Badge>
+                  <Badge tone="outline">{asset.visibility}</Badge>
+                  <Badge tone="outline">{asset.kind}</Badge>
+                </div>
+                <p className="mt-1 truncate text-caption text-foreground-secondary">
+                  {fa ? asset.artistName.fa : asset.artistName.en}
+                  {asset.ownerEmail ? ` · ${asset.ownerEmail}` : ""}
+                </p>
+                <p className="mt-1 text-caption text-muted" dir="ltr">
+                  {asset.id} · {asset.slug} · {new Date(asset.updatedAt).toLocaleDateString(fa ? "fa-IR" : "en-GB")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {asset.visibility === "public" && (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => void assetAction("delist", asset.id)}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-caption disabled:opacity-50"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                    {fa ? "خروج از ویترین" : "Delist"}
+                  </button>
+                )}
+                {asset.visibility === "private" && asset.status === "approved" && (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => void assetAction("relist", asset.id)}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-2 text-caption disabled:opacity-50"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {fa ? "انتشار دوباره" : "Relist"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void assetAction("purge", asset.id)}
+                  className="inline-flex items-center gap-2 rounded-full border border-error/40 px-3 py-2 text-caption text-error disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {fa ? "حذف دائمی" : "Purge"}
+                </button>
+              </div>
+            </article>
+          ))}
+          {filteredAssets.length === 0 && !loading && <EmptyRow fa={fa} />}
+        </section>
+      )}
+
       {view === "orders" && (
         <section className="mt-6">
           <div className="flex gap-2">
@@ -625,13 +801,16 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
                         <button type="button" onClick={() => orderAction("deliver_again", order.id)} className="rounded-full border border-border px-2 py-1">
                           {fa ? "ارسال مجدد ایمیل" : "Re-send mail"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => orderAction("refund", order.id)}
-                          className="rounded-full border border-border px-2 py-1 hover:border-error hover:text-error"
-                        >
-                          {fa ? "بازگشت وجه" : "Refund"}
-                        </button>
+                        {order.status === "paid" && (
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => orderAction("refund", order.id)}
+                            className="rounded-full border border-border px-2 py-1 hover:border-error hover:text-error disabled:opacity-50"
+                          >
+                            {fa ? "ثبت بازپرداخت" : "Record refund"}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -678,17 +857,47 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
                     {fa ? "هنرمند" : "Artist"}: <span dir="ltr">{payout.artistId}</span> ·{" "}
                     {new Date(payout.requestedAt).toLocaleDateString(fa ? "fa-IR" : "en-GB")}
                   </p>
-                  <div className="mt-2 flex gap-2">
-                    <button type="button" onClick={() => payoutAction("approve", payout.id)} className="rounded-full border border-border px-3 py-1.5">
-                      {fa ? "تأیید" : "Approve"}
-                    </button>
-                    <button type="button" onClick={() => payoutAction("paid", payout.id)} className="rounded-full bg-foreground px-3 py-1.5 text-background">
-                      {fa ? "پرداخت شد" : "Mark paid"}
-                    </button>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <input
+                      value={payoutReference[payout.id] ?? payout.reference ?? ""}
+                      onChange={(event) => setPayoutReference((current) => ({ ...current, [payout.id]: event.target.value }))}
+                      dir="ltr"
+                      placeholder={fa ? "شماره پیگیری / مرجع پرداخت" : "Transfer reference"}
+                      className="rounded-md border border-border bg-transparent px-3 py-2 text-caption"
+                    />
+                    <input
+                      value={payoutNote[payout.id] ?? payout.note ?? ""}
+                      onChange={(event) => setPayoutNote((current) => ({ ...current, [payout.id]: event.target.value }))}
+                      placeholder={fa ? "یادداشت داخلی" : "Internal note"}
+                      className="rounded-md border border-border bg-transparent px-3 py-2 text-caption"
+                    />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {payout.status === "requested" && (
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => payoutAction("approve", payout.id)}
+                        className="rounded-full border border-border px-3 py-1.5 disabled:opacity-50"
+                      >
+                        {fa ? "تأیید" : "Approve"}
+                      </button>
+                    )}
+                    {payout.status === "approved" && (
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => payoutAction("paid", payout.id)}
+                        className="rounded-full bg-foreground px-3 py-1.5 text-background disabled:opacity-50"
+                      >
+                        {fa ? "پرداخت شد" : "Mark paid"}
+                      </button>
+                    )}
                     <button
                       type="button"
+                      disabled={busy !== null}
                       onClick={() => payoutAction("reject", payout.id)}
-                      className="rounded-full border border-border px-3 py-1.5 hover:border-error hover:text-error"
+                      className="rounded-full border border-border px-3 py-1.5 hover:border-error hover:text-error disabled:opacity-50"
                     >
                       {fa ? "رد" : "Reject"}
                     </button>
@@ -703,11 +912,13 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
                 <p className="mt-6 text-sm font-medium">{fa ? "آخرین تسویه‌ها" : "Recent payouts"}</p>
                 <ul className="mt-2 space-y-1 text-caption text-foreground-secondary">
                   {payouts.recent.slice(0, 8).map((payout) => (
-                    <li key={payout.id} className="flex justify-between">
+                    <li key={payout.id} className="flex flex-wrap justify-between gap-1">
                       <span dir="ltr">{payout.id}</span>
                       <span>
                         {formatPrice(payout.amount, locale)} · {payout.status}
+                        {payout.reference ? ` · ${payout.reference}` : ""}
                       </span>
+                      {payout.note && <span className="w-full text-muted">{payout.note}</span>}
                     </li>
                   ))}
                 </ul>
@@ -808,35 +1019,50 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
 
       {view === "settings" && settings && (
         <section className="mt-6 max-w-2xl space-y-4 rounded-2xl border border-border p-6">
+          <div className="rounded-xl border border-accent/20 bg-accent/5 p-3 text-xs leading-relaxed text-foreground-secondary">
+            <p>
+              {fa
+                ? "مالیات، سهم پیش‌فرض هنرمند، پورسانت افیلیت و حداقل تسویه تنظیمات مالی فعال هستند و در صفحهٔ مالی پنل اصلی نگهداری می‌شوند؛ اینجا فقط‌خواندنی‌اند."
+                : "Active VAT, artist share, affiliate commission, and payout minimums are managed on the main admin financial page; they are read-only here."}
+            </p>
+            <Link href={`/admin/${locale}?section=financial`} className="mt-2 inline-block font-semibold text-accent underline-offset-4 hover:underline">
+              {fa ? "رفتن به تنظیمات مالی پنل اصلی" : "Open main financial settings"}
+            </Link>
+          </div>
           <NumberField
-            label={fa ? "مالیات بر ارزش افزوده (٪)" : "VAT (%)"}
+            label={fa ? "مالیات بر ارزش افزوده (٪) — فعال" : "VAT (%) — active"}
             value={settings.vatPct}
-            onChange={(value) => setSettings({ ...settings, vatPct: value })}
+            disabled
+            onChange={() => undefined}
           />
           <NumberField
-            label={fa ? "سهم پیش‌فرض هنرمند (٪)" : "Default artist share (%)"}
+            label={fa ? "سهم پیش‌فرض هنرمند (٪) — فعال" : "Default artist share (%) — active"}
             value={settings.artistSharePct}
-            onChange={(value) => setSettings({ ...settings, artistSharePct: value })}
+            disabled
+            onChange={() => undefined}
           />
           <NumberField
-            label={fa ? "کمیسیون معرف (٪)" : "Referral commission (%)"}
+            label={fa ? "پورسانت افیلیت (٪) — فعال" : "Affiliate commission (%) — active"}
             value={settings.affiliatePct}
-            onChange={(value) => setSettings({ ...settings, affiliatePct: value })}
+            disabled
+            onChange={() => undefined}
+          />
+          <NumberField
+            label={fa ? "حداقل تسویه (تومان) — فعال" : "Minimum payout (toman) — active"}
+            value={settings.payoutMinimumFa}
+            disabled
+            onChange={() => undefined}
+          />
+          <NumberField
+            label={fa ? "حداقل تسویه (دلار) — فعال" : "Minimum payout (USD) — active"}
+            value={settings.payoutMinimumEn}
+            disabled
+            onChange={() => undefined}
           />
           <NumberField
             label={fa ? "تخفیف پیش‌فرض کد معرف (٪)" : "Default referral discount (%)"}
             value={settings.affiliateDiscountPct}
             onChange={(value) => setSettings({ ...settings, affiliateDiscountPct: value })}
-          />
-          <NumberField
-            label={fa ? "حداقل تسویه (تومان)" : "Minimum payout (toman)"}
-            value={settings.payoutMinimumFa}
-            onChange={(value) => setSettings({ ...settings, payoutMinimumFa: value })}
-          />
-          <NumberField
-            label={fa ? "حداقل تسویه (دلار)" : "Minimum payout (USD)"}
-            value={settings.payoutMinimumEn}
-            onChange={(value) => setSettings({ ...settings, payoutMinimumEn: value })}
           />
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -855,12 +1081,12 @@ export function AdminConsole({ locale }: { locale: "fa" | "en" }) {
             {fa ? "انتشار خودکار فایل‌های اسکن‌پاک و بی‌درز" : "Auto-publish clean, seamless uploads"}
           </label>
           <button type="button" onClick={saveSettings} className="rounded-full bg-foreground px-5 py-3 text-sm text-background">
-            {fa ? "ذخیره تنظیمات" : "Save settings"}
+            {fa ? "ذخیره تنظیمات عملیاتی مارکت‌پلیس" : "Save marketplace operations settings"}
           </button>
           <p className="text-caption text-foreground-secondary">
             {fa
-              ? "این مقادیر فقط پیش‌فرض هستند؛ هنرمند می‌تواند برای هر اثر سهم متفاوتی داشته باشد (در دیتابیس ثبت می‌شود)."
-              : "These are defaults; per-asset overrides are honoured when present."}
+              ? "این ذخیره فقط تخفیف پیش‌فرض معرف و گزینه‌های عملیاتی مارکت‌پلیس را ثبت می‌کند؛ تنظیمات مالی فعال از مسیر پنل اصلی ذخیره می‌شوند."
+              : "This saves only the default referral discount and marketplace operations switches. Active financial settings are saved from the main admin panel."}
           </p>
         </section>
       )}
@@ -901,15 +1127,26 @@ function EmptyRow({ fa }: { fa: boolean }) {
   return <li className="text-foreground-secondary">{fa ? "موردی ثبت نشده است." : "Nothing recorded yet."}</li>;
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function NumberField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
   return (
     <label className="block text-sm">
       <span className="text-foreground-secondary">{label}</span>
       <input
         type="number"
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2"
+        className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
         dir="ltr"
       />
     </label>

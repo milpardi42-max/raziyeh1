@@ -18,23 +18,28 @@ test("all banner placements and authored links have a site rendering path", () =
   const shop = read("src/app/[locale]/shop/page.tsx");
   const shopHero = read("src/components/shop/ShopHero.tsx");
   assert.match(globalBanner, /placement === "top"/);
+  assert.match(globalBanner, /publicEducationItems\(site\.education\)/);
+  assert.match(globalBanner, /configBars=\{site\.announcementBars \?\? \[\]\}/);
   assert.match(academy, /placement === "academy"/);
   assert.match(shop, /placement === "shop"/);
   assert.match(shopHero, /contentHref\(locale, banner\.href\)/);
   assert.match(shopHero, /banners\.map\(\(banner\)/);
 });
 
-test("financial settings are synchronized into live marketplace checkout and royalties", () => {
+test("financial settings use one ETag-guarded content write and remain live in marketplace checkout and royalties", () => {
   const app = read("src/components/admin/AdminApp.tsx");
   const route = read("src/app/api/marketplace/admin/route.ts");
   const orders = read("src/lib/marketplace/orders.ts");
   const settings = read("src/lib/marketplace/assets.ts");
-  assert.match(app, /section === "financial" && data\.financialConfig/);
-  assert.match(route, /financialConfig:/);
+  assert.match(app, /"If-Match": `"\$\{contentEtag\}"`/);
+  assert.doesNotMatch(app, /\/api\/marketplace\/admin/);
+  assert.match(route, /financial_settings_managed_by_content_admin/);
+  assert.doesNotMatch(route, /saveContent\(/);
   assert.match(orders, /settings\.vatPct/);
   assert.match(orders, /marketplaceSettings\.artistSharePct/);
   assert.match(orders, /marketplaceSettings\.affiliatePct/);
   assert.match(settings, /financial\.defaultArtistSharePct/);
+  assert.match(settings, /financial\.affiliateCommissionPct/);
 });
 
 test("marketplace settings control upload approval and artist sale notices", () => {
@@ -55,7 +60,9 @@ test("admin can update event reservation status and the status is persisted", ()
   const manager = read("src/components/admin/ReservationsManager.tsx");
   assert.match(route, /export async function PATCH/);
   assert.match(route, /updateReservationStatus/);
-  assert.match(store, /await write\(reservations\)/);
+  assert.match(store, /await writeLocal\(reservations\)/);
+  assert.match(store, /return withFileLock\(async \(\) =>/);
+  assert.match(store, /updateRedisReservation\(id, "status", status\)/);
   assert.match(manager, /changeStatus\(reservation\.id, "attended"\)/);
   assert.match(manager, /changeStatus\(reservation\.id, "cancelled"\)/);
 });

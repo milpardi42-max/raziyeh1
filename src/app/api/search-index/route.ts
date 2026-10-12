@@ -1,4 +1,6 @@
 import { isStudioPortfolio, isPublishedPortfolio } from "@/lib/artist/portfolio";
+import { publicSiteContent } from "@/lib/artist/public-profile";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { NextResponse } from "next/server";
 import { getContent } from "@/lib/data/store";
 
@@ -13,13 +15,13 @@ import { getContent } from "@/lib/data/store";
 export const revalidate = 300;
 
 export async function GET() {
-  const site = await getContent();
+  const site = publicSiteContent(await getContent());
   const body = {
     patterns: site.patterns.map(({ slug, title, image, sku }) => ({ slug, title, image, sku })),
     products: site.products.map(({ slug, title, sku, colors }) => ({ slug, title, sku, image: colors[0]?.image ?? "" })),
     artists: site.artists.map(({ slug, name, profession, avatar }) => ({ slug, name, profession, avatar })),
     portfolios: site.portfolios.filter(p => isStudioPortfolio(p) && isPublishedPortfolio(p)).map(({ slug, title, cover }) => ({ slug, title, cover })),
-    education: site.education.map(({ slug, title, image, type }) => ({ slug, title, image, type })),
+    education: publicEducationItems(site.education).map(({ slug, title, image, type }) => ({ slug, title, image, type })),
     categories: site.categories.map(({ slug, name, image }) => ({ slug, name, image })),
   };
   return NextResponse.json(body, {

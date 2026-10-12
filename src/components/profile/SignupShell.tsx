@@ -68,7 +68,7 @@ export function SignupShell({ locale, image, dict }: SignupShellProps) {
 
         {/* hero panel: sits on top of the right image, prompts to log in */}
         <div className="auth-card__hero auth-card__hero--signup">
-          <Logo className="auth-card__hero-logo" />
+          <Logo variant="mark" size={32} className="auth-card__hero-logo" />
           <h2>{fa ? "قبلاً ثبت‌نام کردید؟" : "Already a member?"}</h2>
           <p>{fa ? "وارد شوید و به حساب خود دسترسی داشته باشید." : "Sign in to access your account and collection."}</p>
           <button type="button" onClick={goToLogin} className="auth-card__hero-btn">
@@ -78,7 +78,7 @@ export function SignupShell({ locale, image, dict }: SignupShellProps) {
 
         {/* form panel: left side — restore locale dir for text content */}
         <div className="auth-card__form auth-card__form--signup" dir={fa ? "rtl" : "ltr"}>
-          <Logo className="auth-card__form-logo" />
+          <Logo variant="mark" size={24} className="auth-card__form-logo" />
           <h1 className="auth-card__form-title">{dict.signup}</h1>
           <AuthForm mode="signup" onSignupSuccess={handleSignupSuccess} />
         </div>

@@ -17,6 +17,7 @@ function load(file, dependencies = {}) {
 }
 const { orderStatistics } = load('src/lib/data/order-statistics.ts');
 const { siteStatistics } = load('src/lib/data/statistics.ts');
+const academyPublication = load('src/lib/academy/publication.ts');
 const now = new Date('2026-09-27T12:00:00Z');
 const order = (id, status, amount, createdAt = now.toISOString()) => ({ id, status, total: { fa: amount, en: 0 }, createdAt });
 
@@ -56,13 +57,19 @@ test('public counts are exact and project count excludes non-project portfolios'
 test('founder metrics are scoped to their records and unique active registrants', async () => {
   const id = 'artist-razieh-khairipour';
   const { founderStatistics } = load('src/lib/data/founder-statistics.ts', {
-    'server-only': {}, './reservations': { getAllReservations: async () => [
+    'server-only': {},
+    '../academy/publication': academyPublication,
+    './reservations': { getAllReservations: async () => [
       { eventSlug: 'own', status: 'confirmed', email: 'A@example.com' },
       { eventSlug: 'own', status: 'confirmed', email: ' a@example.com ' },
       { eventSlug: 'own', status: 'cancelled', email: 'b@example.com' },
+      { eventSlug: 'draft', status: 'confirmed', email: 'draft@example.com' },
       { eventSlug: 'other', status: 'confirmed', email: 'c@example.com' },
     ] },
   });
-  const result = await founderStatistics({ patterns: [{ artistId: id }, { artistId: 'other' }], portfolios: [], education: [{ authorId: id, slug: 'own' }] });
+  const result = await founderStatistics({ patterns: [{ artistId: id }, { artistId: 'other' }], portfolios: [], education: [
+    { authorId: id, slug: 'own' },
+    { authorId: id, slug: 'draft', draftStatus: 'draft' },
+  ] });
   assert.deepEqual(result.map(s => s.value.en), ['1', '0', '1', '1']);
 });

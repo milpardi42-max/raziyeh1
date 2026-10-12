@@ -3,18 +3,17 @@ import { SubscriptionsView } from "@/components/marketplace/SubscriptionsView";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import type { Locale } from "@/lib/i18n/types";
 import { href } from "@/lib/utils";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
-  return {
-    title: locale === "fa" ? "اشتراک دانلود ماهانه" : "Monthly download passes",
-    description:
-      locale === "fa"
-        ? "با اشتراک ماهانه چند فایل دیجیتال را با لایسنس شخصی و تجاری دانلود کنید."
-        : "Download a handful of digital files each month under personal/commercial licenses.",
-  };
+  return getEditableRouteMetadata(
+    "/marketplace/subscriptions",
+    locale,
+    locale === "fa" ? "اشتراک دانلود ماهانه" : "Monthly download passes",
+  );
 }
 
 export default async function SubscriptionsPage({ params }: { params: Promise<{ locale: Locale }> }) {

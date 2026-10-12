@@ -17,6 +17,7 @@ import { getAllReservations } from "@/lib/data/reservations";
 import { getSession } from "@/lib/auth";
 import { hasGrantedReservation, isFreePrice } from "@/lib/academy-live";
 import { academyOverview, lessonMinutes, previewVideoOf } from "@/lib/data/academy";
+import { publicEducationItems } from "@/lib/academy/publication";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/types";
 import { faNum, formatDuration, href, t } from "@/lib/utils";
@@ -25,6 +26,7 @@ import { AcademyHeroPreview } from "@/components/academy/AcademyHeroPreview";
 import { VideoGrid, type AcademyVideoEntry } from "@/components/academy/VideoGrid";
 import { SiteContentBanner } from "@/components/layout/SiteContentBanner";
 import { getCspNonce } from "@/lib/security/nonce";
+import { getEditableRouteMetadata } from "@/lib/site-seo";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +39,7 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const site = await getSite();
-  const m = site.seo.find((s) => s.path === "/academy");
-  return {
-    title: m ? { absolute: t(m.title, locale) } : dictionaries[locale].nav.education,
-    description: m ? t(m.description, locale) : undefined,
-  };
+  return getEditableRouteMetadata("/academy", locale, dictionaries[locale].nav.education);
 }
 
 export default async function AcademyPage({
@@ -58,9 +55,10 @@ export default async function AcademyPage({
   const d = dictionaries[locale];
   const isFA = locale === "fa";
   const academyBanners = site.banners.filter((banner) => banner.enabled && banner.placement === "academy");
+  const publishedEducation = publicEducationItems(site.education);
 
   const [all, reservations, session] = await Promise.all([
-    Promise.resolve(site.education.map((e) => enrichEducation(site, e))),
+    Promise.resolve(publishedEducation.map((e) => enrichEducation(site, e))),
     getAllReservations(),
     getSession(),
   ]);
@@ -102,7 +100,7 @@ export default async function AcademyPage({
       .sort((a, b) => new Date(a.liveEvent!.startsAt).getTime() - new Date(b.liveEvent!.startsAt).getTime())[0] ??
     null;
   const n = (v: number) => (isFA ? faNum(v) : String(v));
-  const cats = site.categories.filter((c) => site.education.some((e) => e.categoryId === c.id));
+  const cats = site.categories.filter((c) => publishedEducation.some((e) => e.categoryId === c.id));
   /* The category strip links to `/academy?category=<slug>` — resolve it so the grid opens filtered. */
   const initialCategory = query.category
     ? cats.find((c) => c.slug === query.category)?.id ?? "all"

@@ -15,6 +15,7 @@ import {
   MapPin,
   MessageSquare,
   Palette,
+  Pencil,
   RefreshCw,
   Search,
   Sparkles,
@@ -30,6 +31,8 @@ import {
 import { familyName } from "@/lib/data/families";
 import type { PublicUser } from "@/lib/data/users";
 import type { Artist, Pattern, SiteContent } from "@/lib/types";
+import type { AdminContentMutation } from "@/lib/admin-content-mutation";
+import { ArtistEditor } from "@/components/admin/ArtistEditor";
 
 /* ──────────────────────────────────────────────────────────────
    Types & Helpers
@@ -210,6 +213,7 @@ interface DrawerProps {
   row: ArtistRow;
   locale: string;
   onClose: () => void;
+  onEdit: () => void;
   onStatusChange: (artistId: string, status: ArtistStatus, note?: string) => Promise<void>;
   onFeatureToggle: (artistId: string, featured: boolean) => Promise<void>;
   onDelete: (artistId: string, userId?: string) => Promise<void>;
@@ -220,6 +224,7 @@ function ArtistDetailDrawer({
   row,
   locale,
   onClose,
+  onEdit,
   onStatusChange,
   onFeatureToggle,
   onDelete,
@@ -241,6 +246,9 @@ function ArtistDetailDrawer({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white rounded-t-2xl px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-800">پرونده هنرمند</h2>
           <div className="flex items-center gap-2">
+            <button type="button" onClick={onEdit} className="flex h-7 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-xs text-gray-600 hover:bg-gray-50">
+              <Pencil className="h-3.5 w-3.5" />ویرایش پروفایل
+            </button>
             <a
               href={profileUrl}
               target="_blank"
@@ -741,10 +749,11 @@ function ArtistCard({
 export interface ArtistsManagerProps {
   data: SiteContent;
   update: (patch: Partial<SiteContent>) => void;
+  onContentMutation: (mutation: AdminContentMutation) => void;
   locale?: string;
 }
 
-export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerProps) {
+export function ArtistsManager({ data, update, onContentMutation, locale = "fa" }: ArtistsManagerProps) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -752,6 +761,7 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ViewTab>("all");
   const [selected, setSelected] = useState<ArtistRow | null>(null);
+  const [editTarget, setEditTarget] = useState<Artist | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -784,7 +794,7 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
   const allRows: ArtistRow[] = data.artists.map((artist) => {
     const user = users.find((u) => u.id === artist.userId);
     const patterns = data.patterns.filter((p) => p.artistId === artist.id);
-    const status: ArtistStatus = artist.status ?? "approved";
+    const status: ArtistStatus = artist.status ?? (artist.userId ? "pending" : "approved");
     return { artist, user, patterns, status };
   });
 
@@ -838,10 +848,14 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
         body: JSON.stringify({ id: artistId, status, ...(note !== undefined ? { rejectionNote: note || undefined } : {}) }),
       });
       if (!res.ok) throw new Error();
-      const updatedArtists = data.artists.map((a) =>
-        a.id === artistId ? { ...a, status, ...(note !== undefined ? { rejectionNote: note || undefined } : {}) } : a,
-      );
-      update({ artists: updatedArtists });
+      onContentMutation({
+        etag: res.headers.get("ETag"),
+        artist: {
+          kind: "patch",
+          id: artistId,
+          value: { status, ...(note !== undefined ? { rejectionNote: note || undefined } : {}) },
+        },
+      });
       if (selected?.artist.id === artistId) {
         setSelected((s) =>
           s ? { ...s, status, artist: { ...s.artist, status, ...(note !== undefined ? { rejectionNote: note || undefined } : {}) } } : s,
@@ -864,8 +878,10 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
         body: JSON.stringify({ id: artistId, featured }),
       });
       if (!res.ok) throw new Error();
-      const updatedArtists = data.artists.map((a) => (a.id === artistId ? { ...a, featured } : a));
-      update({ artists: updatedArtists });
+      onContentMutation({
+        etag: res.headers.get("ETag"),
+        artist: { kind: "patch", id: artistId, value: { featured } },
+      });
       if (selected?.artist.id === artistId) {
         setSelected((s) => (s ? { ...s, artist: { ...s.artist, featured } } : s));
       }
@@ -879,17 +895,27 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
   async function handleDelete(artistId: string, userId?: string) {
     setActionLoadingId(artistId);
     try {
-      await fetch(`/api/admin/artists?id=${artistId}`, { method: "DELETE", credentials: "include" });
-      if (userId) {
-        await fetch("/api/admin/users", {
-          method: "DELETE",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: userId }),
-        });
-        setUsers((prev) => prev.filter((u) => u.id !== userId));
-      }
-      update({ artists: data.artists.filter((a) => a.id !== artistId) });
+      const response = userId
+        ? await fetch("/api/admin/users", {
+            method: "DELETE",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: userId }),
+          })
+        : await fetch(`/api/admin/artists?id=${encodeURIComponent(artistId)}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+      const result = await response.json().catch(() => null) as {
+        ok?: boolean;
+        removedArtistIds?: string[];
+      } | null;
+      if (!response.ok || !result?.ok) throw new Error("artist_delete_failed");
+      if (userId) setUsers((prev) => prev.filter((user) => user.id !== userId));
+      onContentMutation({
+        etag: response.headers.get("ETag"),
+        artist: { kind: "remove", ids: result.removedArtistIds ?? [artistId] },
+      });
       setSelected(null);
     } catch {
       setError("عملیات حذف با خطا مواجه شد.");
@@ -898,8 +924,19 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
     }
   }
 
+  function handleArtistSave(updated: Artist) {
+    const updatedArtists = data.artists.map((item) => item.id === updated.id ? updated : item);
+    update({ artists: updatedArtists });
+    setSelected((current) => current?.artist.id === updated.id
+      ? { ...current, artist: updated, patterns: data.patterns.filter((pattern) => pattern.artistId === updated.id) }
+      : current);
+    setEditTarget(null);
+  }
+
   return (
     <div className="space-y-6" dir="rtl">
+      {editTarget && <ArtistEditor artist={editTarget} artists={data.artists} locale={locale === "en" ? "en" : "fa"} onSave={handleArtistSave} onClose={() => setEditTarget(null)} />}
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1051,6 +1088,7 @@ export function ArtistsManager({ data, update, locale = "fa" }: ArtistsManagerPr
           row={selected}
           locale={locale}
           onClose={() => setSelected(null)}
+          onEdit={() => setEditTarget(selected.artist)}
           onStatusChange={handleStatusChange}
           onFeatureToggle={handleFeatureToggle}
           onDelete={handleDelete}

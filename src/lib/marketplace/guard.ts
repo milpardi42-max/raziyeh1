@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getAdminSession, getSession } from "@/lib/auth";
+import { artistApprovalError, getArtistApprovalStatus } from "@/lib/artist/access";
 import { withNoStore } from "@/lib/http";
 import { clientIp } from "@/lib/rate-limit";
 import type { SessionUser } from "@/lib/session";
@@ -34,7 +35,13 @@ export async function requireSession(): Promise<{ user: SessionUser } | { respon
 export async function requireArtistOrAdmin(): Promise<{ user: SessionUser } | { response: NextResponse }> {
   const user = await getSession();
   if (!user) return { response: fail("unauthorized", 401) };
-  if (user.role !== "artist" && user.role !== "admin") return { response: fail("forbidden", 403) };
+  if (user.role === "admin") return { user };
+  if (user.role !== "artist") return { response: fail("forbidden", 403) };
+
+  const approval = await getArtistApprovalStatus(user);
+  if (approval !== "approved") {
+    return { response: fail(artistApprovalError(approval), 403, { approvalStatus: approval }) };
+  }
   return { user };
 }
 

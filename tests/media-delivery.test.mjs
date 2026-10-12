@@ -56,12 +56,20 @@ test("all bundled raster images can be decoded", async () => {
   assert.deepEqual(broken, [], `undecodable images: ${broken.join(", ")}`);
 });
 
-test("user-uploaded media uses first-party URLs and range-capable same-origin delivery", () => {
-  for (const file of ["src/app/api/artist/upload/route.ts", "src/app/api/admin/academy/upload-video/route.ts"]) {
-    assert.match(fs.readFileSync(path.join(root, file), "utf8"), /storePublicMedia/);
-  }
-  const delivery = fs.readFileSync(path.join(root, "src/app/api/media/[id]/route.ts"), "utf8");
-  assert.match(delivery, /accept-ranges/);
-  assert.match(delivery, /content-range/);
-  assert.match(delivery, /206/);
+test("user media uses first-party URLs, with range delivery and entitlement checks for private academy video", () => {
+  const artistUpload = fs.readFileSync(path.join(root, "src/app/api/artist/upload/route.ts"), "utf8");
+  const academyUpload = fs.readFileSync(path.join(root, "src/app/api/admin/academy/upload-video/route.ts"), "utf8");
+  assert.match(artistUpload, /storePublicMedia/);
+  assert.match(academyUpload, /storePrivateAcademyVideo/);
+
+  const publicDelivery = fs.readFileSync(path.join(root, "src/app/api/media/[id]/route.ts"), "utf8");
+  assert.match(publicDelivery, /accept-ranges/);
+  assert.match(publicDelivery, /content-range/);
+  assert.match(publicDelivery, /206/);
+
+  const privateDelivery = fs.readFileSync(path.join(root, "src/app/api/academy/videos/[id]/route.ts"), "utf8");
+  assert.match(privateDelivery, /PRIVATE_KEY_PATTERN/);
+  assert.match(privateDelivery, /hasGrantedReservation/);
+  assert.match(privateDelivery, /content-range/);
+  assert.match(privateDelivery, /206/);
 });

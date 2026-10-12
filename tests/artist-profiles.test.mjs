@@ -10,14 +10,38 @@ new Function(
     compilerOptions: { module: ts.ModuleKind.CommonJS },
   }).outputText,
 )(exports);
-const { isPublicArtist, publicArtist } = exports;
+const { isPublicArtist, publicArtist, publicSiteContent } = exports;
 
 test("only approved and legacy public artists are visible", () => {
   assert.equal(isPublicArtist({}), true);
   assert.equal(isPublicArtist({ status: "approved" }), true);
   assert.equal(isPublicArtist({ status: "pending" }), false);
   assert.equal(isPublicArtist({ status: "rejected" }), false);
+  assert.equal(isPublicArtist({ userId: "usr-pending" }), false);
+  assert.equal(isPublicArtist({ status: "approved", userId: "usr-approved" }), true);
 });
+test("public content excludes pending/rejected/missing artist profiles and their work", () => {
+  const result = publicSiteContent({
+    artists: [
+      { id: "approved", status: "approved" },
+      { id: "pending", userId: "usr-pending", status: "pending" },
+      { id: "rejected", userId: "usr-rejected", status: "rejected" },
+    ],
+    patterns: [{ artistId: "approved" }, { artistId: "pending" }, { artistId: null }, { artistId: "deleted" }],
+    products: [{ artistId: "pending" }, { artistId: null }],
+    portfolios: [{ artistId: "rejected" }, { artistId: null }],
+    education: [{ authorId: "pending" }, { authorId: "approved" }],
+    stories: [{ artistId: "pending" }, { artistId: "approved" }],
+  });
+
+  assert.deepEqual(result.artists.map((artist) => artist.id), ["approved"]);
+  assert.deepEqual(result.patterns.map((pattern) => pattern.artistId), ["approved", null]);
+  assert.deepEqual(result.products.map((product) => product.artistId), [null]);
+  assert.deepEqual(result.portfolios.map((portfolio) => portfolio.artistId), [null]);
+  assert.deepEqual(result.education.map((item) => item.authorId), ["approved"]);
+  assert.deepEqual(result.stories.map((story) => story.artistId), ["approved"]);
+});
+
 test("public profile strips inquiries and registration/account details", () => {
   const result = publicArtist({
     id: "a",
